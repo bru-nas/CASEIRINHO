@@ -5,6 +5,9 @@
    ============================================================ */
 
 const PIX_KEY = "62982694287";
+const PIX_KEY_TYPE = "Celular";
+const PIX_OWNER = "Bruna Miztella Honorato Carvalho";
+const PIX_BANK = "PagBank";
 const MOEDOR_COST = 7; // custo fixo do moedor (R$), somado ao custo quando o cliente escolhe "com moedor"
 const FREE_SHIPPING_THRESHOLD = 100;
 const SHIPPING_FEE = 15;

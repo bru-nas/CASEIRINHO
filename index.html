@@ -458,8 +458,10 @@ function renderSheet(){
     if (paymentMethod === "pix") {
       paymentBlock = `
       <div class="pix-box">
-        <div>Chave Pix</div>
+        <div>Chave Pix (${PIX_KEY_TYPE})</div>
         <div class="pix-key">${PIX_KEY}</div>
+        <div style="font-size:13px; opacity:0.9;">${PIX_OWNER}</div>
+        <div style="font-size:12px; opacity:0.8; margin-bottom:8px;">${PIX_BANK}</div>
         <div style="font-size:14px; margin-bottom:10px;">Valor: R$ ${total.toFixed(2)}</div>
         <button class="copy-btn" onclick="copyPix()">Copiar chave</button>
       </div>`;
