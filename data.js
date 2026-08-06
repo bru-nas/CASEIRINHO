@@ -48,7 +48,7 @@ const MENU = {
     sizeLabel: "Opção",
     sizes: [
       { key: "com_moedor", label: "Com refil + moedor 250g", price: 25 },
-      { key: "sem_refil", label: "Sem refil 250g", price: 15 },
+      { key: "sem_refil", label: "Somente refil 250g", price: 15 },
     ],
     products: [
       { key: "saladete", label: "Saladete", desc: "sal saborizado com limão desidratado e ervas para salada" },
