@@ -210,6 +210,8 @@ function allOrderItems(){
 /* ============ TAB: Pedidos (separação por pessoa) ============ */
 function renderPedidos(panel){
   const items = allOrderItems();
+  const paymentByCustomer = {};
+  STATE.appOrders.forEach(o => { paymentByCustomer[o.customer] = o.paymentMethod; });
   const byCustomer = {};
   items.forEach(it => {
     const key = it.customer || "Sem nome";
@@ -224,8 +226,10 @@ function renderPedidos(panel){
     names.forEach(name => {
       const list = byCustomer[name];
       const total = list.reduce((s,i)=> s+(i.price||0), 0);
+      const pm = paymentByCustomer[name];
+      const pmBadge = pm === "pix" ? '<span class="badge" style="background:var(--gold); color:var(--brown);">Pix</span>' : pm === "card" ? '<span class="badge" style="background:var(--brown);">Cartão na entrega</span>' : "";
       html += `<div class="card">
-        <b>${name}</b> ${list[0].source === "app" ? '<span class="badge app">App</span>' : ''}
+        <b>${name}</b> ${list[0].source === "app" ? '<span class="badge app">App</span>' : ''} ${pmBadge}
         <table style="margin-top:8px;">
           <tr><th>Produto</th><th>Tamanho</th><th>Origem</th><th>Preço</th></tr>
           ${list.map(i => `<tr>
@@ -694,13 +698,17 @@ function renderCaixa(panel){
   } else {
     const sortedMonths = [...months].sort();
     sortedMonths.forEach(mk => {
-      const appEntradas = STATE.appOrders.filter(o=>monthKey(o.createdAt)===mk).reduce((s,o)=>s+(o.total||0),0);
+      const appOrdersMonth = STATE.appOrders.filter(o=>monthKey(o.createdAt)===mk);
+      const productEntradas = appOrdersMonth.reduce((s,o)=>s+(o.subtotal||0),0);
+      const shippingEntradas = appOrdersMonth.reduce((s,o)=>s+(o.shipping||0),0);
       const manualEntradas = STATE.manualOrders.filter(o=>monthKey(o.createdAt)===mk).reduce((s,o)=>s+(o.price||0),0);
       const repasseEntradas = STATE.repasses.filter(r=>r.month===mk).reduce((s,r)=>s+(r.value||0),0);
       const insumoSaidas = STATE.insumoPurchases.filter(o=>monthKey(new Date(o.date).getTime())===mk).reduce((s,o)=>s+(o.cost||0),0);
-      const despesaSaidas = STATE.despesas.filter(o=>monthKey(new Date(o.date).getTime())===mk).reduce((s,o)=>s+(o.value||0),0);
-      const entradas = appEntradas + manualEntradas + repasseEntradas;
-      const saidas = insumoSaidas + despesaSaidas;
+      const despesasMonth = STATE.despesas.filter(o=>monthKey(new Date(o.date).getTime())===mk);
+      const gasolinaSaidas = despesasMonth.filter(d => (d.desc||"").toLowerCase().includes("gasolina")).reduce((s,o)=>s+(o.value||0),0);
+      const outrasDespesas = despesasMonth.reduce((s,o)=>s+(o.value||0),0) - gasolinaSaidas;
+      const entradas = productEntradas + shippingEntradas + manualEntradas + repasseEntradas;
+      const saidas = insumoSaidas + gasolinaSaidas + outrasDespesas;
       const caixa = entradas - saidas;
 
       html += `<div class="card"><b>${monthLabel(mk)}</b>
@@ -709,6 +717,17 @@ function renderCaixa(panel){
           <div class="stat-box negative"><div class="label">Saídas</div><div class="value">R$ ${saidas.toFixed(2)}</div></div>
           <div class="stat-box ${caixa>=0?'positive':'negative'}"><div class="label">Caixa</div><div class="value">R$ ${caixa.toFixed(2)}</div></div>
         </div>
+        <table style="margin-top:4px;">
+          <tr><th>Detalhe</th><th>Valor</th></tr>
+          <tr><td>Vendas (produtos)</td><td>R$ ${productEntradas.toFixed(2)}</td></tr>
+          <tr><td>Taxa de entrega recebida</td><td style="color:var(--olive); font-weight:600;">+ R$ ${shippingEntradas.toFixed(2)}</td></tr>
+          <tr><td>Pedidos por fora / plataformas</td><td>R$ ${manualEntradas.toFixed(2)}</td></tr>
+          <tr><td>Repasses de plataforma</td><td>R$ ${repasseEntradas.toFixed(2)}</td></tr>
+          <tr><td>Gasolina</td><td style="color:var(--red);">− R$ ${gasolinaSaidas.toFixed(2)}</td></tr>
+          <tr><td>Insumos comprados</td><td style="color:var(--red);">− R$ ${insumoSaidas.toFixed(2)}</td></tr>
+          <tr><td>Outras despesas</td><td style="color:var(--red);">− R$ ${outrasDespesas.toFixed(2)}</td></tr>
+        </table>
+        <div class="config-note" style="margin-top:0;">Taxa de entrega entra como receita e ajuda a cobrir a Gasolina — compare as duas linhas acima. Pedidos pagos no cartão na entrega já incluem a taxa da maquininha no valor cobrado do cliente, então não afetam seu caixa líquido.</div>
       </div>`;
     });
   }

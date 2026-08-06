@@ -8,6 +8,7 @@ const PIX_KEY = "62982694287";
 const MOEDOR_COST = 7; // custo fixo do moedor (R$), somado ao custo quando o cliente escolhe "com moedor"
 const FREE_SHIPPING_THRESHOLD = 100;
 const SHIPPING_FEE = 15;
+const CARD_MACHINE_FEE_PCT = 0.03; // taxa da maquininha (cartão na entrega) — editável aqui
 
 /* ---------- CARDÁPIO ---------- */
 const MENU = {
