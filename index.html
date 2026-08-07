@@ -81,6 +81,13 @@
   .copy-btn{ background: var(--gold); color: var(--brown); border:none; border-radius: 8px; padding: 8px 16px; font-weight:700; cursor:pointer; font-size: 13px; }
   .success-icon{ font-size: 44px; text-align:center; margin-bottom: 8px;}
 
+  .whatsapp-btn{
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    width:100%; background: #25D366; color: white; border:none; border-radius: 12px;
+    padding: 14px; font-family:'Poppins',sans-serif; font-weight:600; font-size:15px;
+    margin-top: 12px; cursor:pointer; text-decoration:none;
+  }
+
   footer{ text-align:center; font-size: 12px; color: var(--brown-soft); padding: 30px 20px 10px; }
 </style>
 </head>
@@ -327,6 +334,7 @@ let cart = [];
 let cartIdCounter = 0;
 let sheetMode = "cart";
 let paymentMethod = "pix";
+let lastOrder = null;
 
 function renderMenu(){
   const el = document.getElementById("menu");
@@ -453,8 +461,18 @@ function renderSheet(){
         Seu pedido foi registrado. ${paymentMethod==='pix' ? 'Agora é só pagar via Pix e enviar o comprovante.' : 'O pagamento será feito na entrega, no cartão.'}
       </p>
       ${paymentBlock}
+      <a class="whatsapp-btn" href="${buildWhatsappLink()}" target="_blank" rel="noopener">
+        💬 Enviar comprovante / avisar no WhatsApp
+      </a>
     `;
   }
+}
+
+function buildWhatsappLink(){
+  if (!lastOrder) return `https://wa.me/${WHATSAPP_NUMBER}`;
+  const itemsText = lastOrder.items.map(i => `- ${i.prodLabel} (${i.sizeLabel})`).join("%0A");
+  const msg = `Olá! Fiz um pedido no Caseirinho:%0A${itemsText}%0A%0ATotal: R$ ${lastOrder.total.toFixed(2)}%0ANome: ${encodeURIComponent(lastOrder.customer)}`;
+  return `https://wa.me/${WHATSAPP_NUMBER}?text=${msg}`;
 }
 
 function setPaymentMethod(method){ paymentMethod = method; renderSheet(); }
@@ -484,6 +502,7 @@ function confirmOrder(){
     source: "app",
   };
   saveOrder(order);
+  lastOrder = order;
   sheetMode = "success";
   renderSheet();
   cart = [];
