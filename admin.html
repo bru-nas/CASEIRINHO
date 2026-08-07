@@ -761,13 +761,14 @@ function renderProducao(panel){
 
 /* ============ TAB: Fora do App / Plataformas ============ */
 let manualCart = [];
+let manualFormState = { customer: "", phone: "", platform: PLATFORMS[0] };
 
 function renderPlataformas(panel){
   let html = `<h2>Pedidos fora do app</h2><div class="subtitle">Adicione quantos produtos quiser e registre tudo junto como um pedido só.</div>`;
   html += `<div class="form-grid">
-    <div><label>Cliente</label><input type="text" id="m_customer" placeholder="Nome do cliente"></div>
-    <div><label>WhatsApp (opcional, ajuda a diferenciar nomes iguais)</label><input type="text" id="m_phone" placeholder="(62) 9xxxx-xxxx"></div>
-    <div><label>Plataforma</label><select id="m_platform">${PLATFORMS.map(p => `<option>${p}</option>`).join("")}</select></div>
+    <div><label>Cliente</label><input type="text" id="m_customer" value="${manualFormState.customer.replace(/"/g,'&quot;')}" oninput="manualFormState.customer = this.value" placeholder="Nome do cliente"></div>
+    <div><label>WhatsApp (opcional, ajuda a diferenciar nomes iguais)</label><input type="text" id="m_phone" value="${manualFormState.phone.replace(/"/g,'&quot;')}" oninput="manualFormState.phone = this.value" placeholder="(62) 9xxxx-xxxx"></div>
+    <div><label>Plataforma</label><select id="m_platform" onchange="manualFormState.platform = this.value">${PLATFORMS.map(p => `<option ${p===manualFormState.platform?'selected':''}>${p}</option>`).join("")}</select></div>
     <div><label>Linha</label><select id="m_line" onchange="updateManualProductOptions()">${Object.keys(MENU).map(k => `<option value="${k}">${MENU[k].label}</option>`).join("")}</select></div>
     <div><label>Produto</label><select id="m_product"></select></div>
     <div><label>Tamanho / opção</label><select id="m_size"></select></div>
@@ -839,9 +840,9 @@ function removeFromManualCart(idx){
 }
 
 async function registerManualOrder(){
-  const customer = document.getElementById("m_customer").value.trim() || "Sem nome";
-  const phone = document.getElementById("m_phone").value.trim();
-  const platform = document.getElementById("m_platform").value;
+  const customer = manualFormState.customer.trim() || "Sem nome";
+  const phone = manualFormState.phone.trim();
+  const platform = manualFormState.platform;
   const record = {
     id: "man_" + Date.now() + "_" + Math.floor(Math.random()*1000),
     customer, phone, platform,
@@ -855,6 +856,7 @@ async function registerManualOrder(){
     await pushRecord("pedidos_manuais", record);
   }
   manualCart = [];
+  manualFormState = { customer: "", phone: "", platform: PLATFORMS[0] };
   await loadAll();
   renderMain();
 }
