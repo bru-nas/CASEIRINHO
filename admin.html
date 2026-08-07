@@ -430,7 +430,7 @@ function renderMain(){
 function allOrderItems(){
   const items = [];
   STATE.appOrders.forEach(o => { (o.items||[]).forEach(it => items.push({ customer:o.customer, ...it, source:"app", platform:null })); });
-  STATE.manualOrders.forEach(o => { items.push({ customer:o.customer, prodKey:o.prodKey, prodLabel:o.prodLabel, lineKey:o.lineKey, sizeKey:o.sizeKey, sizeLabel:o.sizeLabel, price:o.price, source:"manual", platform:o.platform }); });
+  STATE.manualOrders.forEach(o => { (o.items||[]).forEach(it => items.push({ customer:o.customer, ...it, source:"manual", platform:o.platform })); });
   return items;
 }
 
@@ -445,7 +445,7 @@ const DELIVERY_STAGES = [
 function renderPedidos(panel){
   const allOrders = [
     ...STATE.appOrders.map(o => ({ ...o, source: "app" })),
-    ...STATE.manualOrders.map(o => ({ ...o, source: "manual", items: [{ prodLabel: o.prodLabel, sizeLabel: o.sizeLabel, price: o.price }] })),
+    ...STATE.manualOrders.map(o => ({ ...o, source: "manual" })),
   ].sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
 
   let html = `<h2>Pedidos</h2><div class="subtitle">Cada pedido com o passo a passo de entrega. Clique na etapa pra atualizar.</div>`;
@@ -760,8 +760,10 @@ function renderProducao(panel){
 }
 
 /* ============ TAB: Fora do App / Plataformas ============ */
+let manualCart = [];
+
 function renderPlataformas(panel){
-  let html = `<h2>Pedidos fora do app</h2><div class="subtitle">Registre vendas feitas por fora (WhatsApp, presencial) ou pelas plataformas cadastradas.</div>`;
+  let html = `<h2>Pedidos fora do app</h2><div class="subtitle">Adicione quantos produtos quiser e registre tudo junto como um pedido só.</div>`;
   html += `<div class="form-grid">
     <div><label>Cliente</label><input type="text" id="m_customer" placeholder="Nome do cliente"></div>
     <div><label>WhatsApp (opcional, ajuda a diferenciar nomes iguais)</label><input type="text" id="m_phone" placeholder="(62) 9xxxx-xxxx"></div>
@@ -771,14 +773,37 @@ function renderPlataformas(panel){
     <div><label>Tamanho / opção</label><select id="m_size"></select></div>
     <div><label>Valor unitário de venda (R$)</label><input type="number" step="0.01" id="m_price" placeholder="Ex: 12.00"></div>
   </div>
-  <button class="btn secondary" onclick="addManualOrder()">Registrar pedido</button>`;
+  <button class="btn secondary" onclick="addToManualCart()">+ Adicionar produto ao pedido</button>`;
+
+  html += `<div style="margin-top:16px;"><b>Itens do pedido atual</b></div>`;
+  if (manualCart.length === 0) {
+    html += `<div class="empty">Nenhum produto adicionado ainda. Adiciona os produtos e depois clica em "Registrar pedido".</div>`;
+  } else {
+    html += `<div class="item-list" style="margin-top:8px;">
+      ${manualCart.map((i, idx) => `<div class="item-row"><span>${i.prodLabel} <span class="item-size">${i.sizeLabel}</span></span><span style="display:flex; align-items:center; gap:8px;"><span class="item-price">R$ ${i.price.toFixed(2)}</span><button class="delete-btn" onclick="removeFromManualCart(${idx})">Remover</button></span></div>`).join("")}
+    </div>
+    <div style="text-align:right; font-weight:700; margin-top:6px;">Total do pedido: R$ ${manualCart.reduce((s,i)=>s+i.price,0).toFixed(2)}</div>`;
+  }
+  html += `<button class="btn" ${manualCart.length===0?"disabled":""} onclick="registerManualOrder()">Registrar pedido completo</button>`;
+
   html += `<h2 style="margin-top:26px;">Pedidos registrados fora do app</h2>`;
   if (STATE.manualOrders.length === 0) {
     html += `<div class="empty">Nenhum pedido manual ainda.</div>`;
   } else {
-    html += `<table><tr><th>Cliente</th><th>Produto</th><th>Tamanho</th><th>Plataforma</th><th>Valor</th></tr>
-      ${STATE.manualOrders.map(o => `<tr><td>${o.customer}</td><td>${o.prodLabel}</td><td>${o.sizeLabel}</td><td><span class="badge platform">${o.platform}</span></td><td>R$ ${o.price.toFixed(2)}</td></tr>`).join("")}
-    </table>`;
+    const sorted = [...STATE.manualOrders].sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+    html += sorted.map(o => {
+      const total = (o.items||[]).reduce((s,i)=>s+(i.price||0),0);
+      return `<div class="order-card">
+        <div class="order-card-top">
+          <div><b>${o.customer}</b> <span class="badge platform">${o.platform}</span></div>
+          <button class="delete-btn" onclick="deleteOrder('manual','${o.id}')">Excluir</button>
+        </div>
+        <div class="item-list">
+          ${(o.items||[]).map(i => `<div class="item-row"><span>${i.prodLabel} <span class="item-size">${i.sizeLabel}</span></span><span class="item-price">R$ ${(i.price||0).toFixed(2)}</span></div>`).join("")}
+        </div>
+        <div class="order-card-total">Total: R$ ${total.toFixed(2)}</div>
+      </div>`;
+    }).join("");
   }
   panel.innerHTML = html;
   updateManualProductOptions();
@@ -796,23 +821,40 @@ function updateManualProductOptions(){
   document.getElementById("m_size").onchange();
 }
 
-async function addManualOrder(){
+function addToManualCart(){
   const lineKey = document.getElementById("m_line").value;
   const prodKey = document.getElementById("m_product").value;
   const prod = MENU[lineKey].products.find(p=>p.key===prodKey);
   const sizeOpt = document.getElementById("m_size").selectedOptions[0];
   const sizeKey = sizeOpt.value;
   const sizeLabel = sizeOpt.textContent.split(" — ")[0];
+  const price = parseFloat(document.getElementById("m_price").value) || 0;
+  manualCart.push({ lineKey, prodKey, prodLabel: prod.label, sizeKey, sizeLabel, price });
+  renderMain();
+}
+
+function removeFromManualCart(idx){
+  manualCart.splice(idx, 1);
+  renderMain();
+}
+
+async function registerManualOrder(){
   const customer = document.getElementById("m_customer").value.trim() || "Sem nome";
   const phone = document.getElementById("m_phone").value.trim();
   const platform = document.getElementById("m_platform").value;
-  const price = parseFloat(document.getElementById("m_price").value) || 0;
-  const record = { id: "man_" + Date.now() + "_" + Math.floor(Math.random()*1000), customer, phone, lineKey, prodKey, prodLabel: prod.label, sizeKey, sizeLabel, platform, price, deliveryStatus: "feito", createdAt: Date.now() };
+  const record = {
+    id: "man_" + Date.now() + "_" + Math.floor(Math.random()*1000),
+    customer, phone, platform,
+    items: manualCart.map(i => ({ ...i })),
+    deliveryStatus: "feito",
+    createdAt: Date.now(),
+  };
   if (dbReady) {
     await firebase.database().ref("pedidos_manuais/" + record.id).set(record);
   } else {
     await pushRecord("pedidos_manuais", record);
   }
+  manualCart = [];
   await loadAll();
   renderMain();
 }
