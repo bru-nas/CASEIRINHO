@@ -88,6 +88,21 @@
     margin-top: 12px; cursor:pointer; text-decoration:none;
   }
 
+  .success-screen{
+    position: fixed; inset:0; background: var(--cream); z-index: 200;
+    display:none; flex-direction:column; align-items:center; justify-content:center;
+    padding: 30px 22px; text-align:center;
+  }
+  .success-screen.open{ display:flex; }
+  .success-screen .big-icon{ font-size: 60px; margin-bottom: 10px; }
+  .success-screen h2{ font-family:'Caveat',cursive; font-size:34px; color:var(--terracotta-dark); margin:0 0 6px;}
+  .success-screen p{ font-size:14px; color:var(--brown-soft); max-width: 360px; margin-bottom: 18px;}
+  .success-screen .content-box{ width:100%; max-width:400px; }
+  .back-to-menu-btn{
+    background:none; border:1.5px solid var(--brown-soft); color:var(--brown-soft);
+    border-radius:10px; padding:10px 18px; font-size:13px; font-weight:600; margin-top:20px; cursor:pointer;
+  }
+
   footer{ text-align:center; font-size: 12px; color: var(--brown-soft); padding: 30px 20px 10px; }
 </style>
 </head>
@@ -107,6 +122,8 @@
 <div class="overlay" id="overlay">
   <div class="sheet" id="sheet"></div>
 </div>
+
+<div class="success-screen" id="successScreen"></div>
 
 <footer>
   Frete grátis para pedidos acima de R$ 100 · Abaixo disso, taxa de R$ 15
@@ -335,6 +352,7 @@ let cartIdCounter = 0;
 let sheetMode = "cart";
 let paymentMethod = "pix";
 let lastOrder = null;
+let isSubmitting = false;
 
 function renderMenu(){
   const el = document.getElementById("menu");
@@ -431,41 +449,58 @@ function renderSheet(){
         ${cardFee > 0 ? `<div class="totals-row"><span>Taxa da maquininha (${(CARD_MACHINE_FEE_PCT*100).toFixed(0)}%)</span><span>R$ ${cardFee.toFixed(2)}</span></div>` : ""}
         <div class="totals-row total"><span>Total</span><span>R$ ${total.toFixed(2)}</span></div>
       </div>
-      <button class="checkout-btn" onclick="confirmOrder()">${paymentMethod==='pix' ? "Confirmar e ver chave Pix" : "Confirmar pedido"}</button>
+      <button class="checkout-btn" id="confirmBtn" onclick="confirmOrder()">${paymentMethod==='pix' ? "Confirmar e ver chave Pix" : "Confirmar pedido"}</button>
     `;
-  } else if (sheetMode === "success") {
-    const { total } = calcTotal();
-    let paymentBlock = "";
-    if (paymentMethod === "pix") {
-      paymentBlock = `
+  }
+}
+
+function showSuccessScreen(){
+  closeSheet();
+  const { total } = calcTotal();
+  const screen = document.getElementById("successScreen");
+  let paymentBlock = "";
+  if (paymentMethod === "pix") {
+    paymentBlock = `
       <div class="pix-box">
         <div>Chave Pix (${PIX_KEY_TYPE})</div>
         <div class="pix-key">${PIX_KEY}</div>
         <div style="font-size:13px; opacity:0.9;">${PIX_OWNER}</div>
         <div style="font-size:12px; opacity:0.8; margin-bottom:8px;">${PIX_BANK}</div>
-        <div style="font-size:14px; margin-bottom:10px;">Valor: R$ ${total.toFixed(2)}</div>
+        <div style="font-size:14px; margin-bottom:10px;">Valor: R$ ${lastOrder.total.toFixed(2)}</div>
         <button class="copy-btn" onclick="copyPix()">Copiar chave</button>
-      </div>`;
-    } else {
-      paymentBlock = `
+      </div>
+      <a class="whatsapp-btn" href="${buildWhatsappLink()}" target="_blank" rel="noopener">
+        💬 Enviar comprovante no WhatsApp
+      </a>
+      <p style="font-size:12.5px; color:var(--brown-soft); margin-top:14px;">Pague a chave acima e depois toque no botão pra nos avisar pelo WhatsApp.</p>
+    `;
+  } else {
+    paymentBlock = `
       <div class="pix-box">
         <div>Pagamento na entrega</div>
         <div style="font-size:22px; font-weight:700; margin:6px 0;">Cartão</div>
-        <div style="font-size:14px;">Valor total (já com taxa da maquininha): R$ ${total.toFixed(2)}</div>
-      </div>`;
-    }
-    sheet.innerHTML = `
-      <div class="sheet-header"><p class="sheet-title">Pedido enviado! 🎉</p><button class="close-btn" onclick="closeSheet()">✕</button></div>
-      <div class="success-icon">✅</div>
-      <p style="text-align:center; font-size:14px; color:var(--brown-soft);">
-        Seu pedido foi registrado. ${paymentMethod==='pix' ? 'Agora é só pagar via Pix e enviar o comprovante.' : 'O pagamento será feito na entrega, no cartão.'}
-      </p>
-      ${paymentBlock}
+        <div style="font-size:14px;">Valor total (já com taxa da maquininha): R$ ${lastOrder.total.toFixed(2)}</div>
+      </div>
       <a class="whatsapp-btn" href="${buildWhatsappLink()}" target="_blank" rel="noopener">
-        💬 Enviar comprovante / avisar no WhatsApp
+        💬 Avisar no WhatsApp que o pedido foi feito
       </a>
+      <p style="font-size:12.5px; color:var(--brown-soft); margin-top:14px;">O pagamento é na entrega, no cartão. Toque no botão pra já avisar que o pedido está confirmado.</p>
     `;
   }
+
+  screen.innerHTML = `
+    <div class="big-icon">✅</div>
+    <h2>Pedido enviado!</h2>
+    <p>Seu pedido foi registrado certinho.</p>
+    <div class="content-box">${paymentBlock}</div>
+    <button class="back-to-menu-btn" onclick="backToMenu()">Voltar pro cardápio</button>
+  `;
+  screen.classList.add("open");
+}
+
+function backToMenu(){
+  document.getElementById("successScreen").classList.remove("open");
+  sheetMode = "cart";
 }
 
 function buildWhatsappLink(){
@@ -479,6 +514,7 @@ function setPaymentMethod(method){ paymentMethod = method; renderSheet(); }
 function goToCheckout(){ sheetMode = "checkout"; renderSheet(); }
 
 function confirmOrder(){
+  if (isSubmitting) return;
   const nameInput = document.getElementById("customerName");
   const name = nameInput.value.trim();
   if (!name) {
@@ -486,6 +522,10 @@ function confirmOrder(){
     nameInput.placeholder = "Por favor, digite seu nome";
     return;
   }
+  isSubmitting = true;
+  const btn = document.getElementById("confirmBtn");
+  if (btn) { btn.disabled = true; btn.textContent = "Enviando pedido..."; }
+
   const { subtotal, shipping, cardFee, total } = calcTotal();
   const phone = document.getElementById("customerPhone").value.trim();
   const orderId = "ord_" + Date.now() + "_" + Math.floor(Math.random()*1000);
@@ -503,10 +543,10 @@ function confirmOrder(){
   };
   saveOrder(order);
   lastOrder = order;
-  sheetMode = "success";
-  renderSheet();
   cart = [];
   updateBadge();
+  isSubmitting = false;
+  showSuccessScreen();
 }
 
 function copyPix(){
