@@ -48,6 +48,7 @@
 
   .pix-box{ background: var(--brown); color: var(--cream); border-radius: 14px; padding: 20px; text-align:center; margin: 16px 0; }
   .pix-key{ font-size: 22px; font-weight:700; margin: 10px 0; word-break: break-all; }
+  .copy-pix-btn{ background: var(--gold); color: var(--brown); border:none; border-radius: 8px; padding: 10px 18px; font-weight:700; cursor:pointer; font-size: 13.5px; margin-top: 12px; }
   .whatsapp-btn{ display:block; text-align:center; background:#25D366; color:white; border:none; border-radius:10px; padding:16px; font-size:16px; font-weight:700; text-decoration:none; margin-top:14px; }
   .total-line{ display:flex; justify-content:space-between; font-size:16px; font-weight:700; padding-top:10px; border-top:1px dashed #ccc; margin-top:8px; }
 </style>
@@ -455,6 +456,19 @@ function finalizarPedido(){
   mostrarTelaSucesso(order);
 }
 
+function copiarChavePix(){
+  navigator.clipboard.writeText(PIX_KEY).then(function(){
+    var btn = document.querySelector(".copy-pix-btn");
+    if (btn) {
+      var original = btn.textContent;
+      btn.textContent = "✅ Copiado!";
+      setTimeout(function(){ btn.textContent = original; }, 1800);
+    }
+  }).catch(function(){
+    alert("Chave Pix: " + PIX_KEY);
+  });
+}
+
 function mostrarTelaSucesso(order){
   var whatsappTexto = "Ol\u00e1! Fiz um pedido no Caseirinho:%0A";
   for (var i = 0; i < order.items.length; i++) {
@@ -465,12 +479,14 @@ function mostrarTelaSucesso(order){
 
   var html = "";
   if (order.paymentMethod === "pix") {
+    var pixFormatado = PIX_KEY.length === 11 ? "(" + PIX_KEY.slice(0,2) + ") " + PIX_KEY.slice(2,7) + "-" + PIX_KEY.slice(7) : PIX_KEY;
     html += '<div class="pix-box">';
     html += '<div>Chave Pix (' + PIX_KEY_TYPE + ')</div>';
-    html += '<div class="pix-key">' + PIX_KEY + '</div>';
+    html += '<div class="pix-key">' + pixFormatado + '</div>';
     html += '<div>' + PIX_OWNER + '</div>';
     html += '<div style="font-size:13px; opacity:0.8;">' + PIX_BANK + '</div>';
     html += '<div style="font-size:18px; margin-top:10px;">Valor: R$ ' + order.total.toFixed(2) + '</div>';
+    html += '<button class="copy-pix-btn" onclick="copiarChavePix()">📋 Copiar chave Pix</button>';
     html += '</div>';
     html += '<p style="text-align:center;">Pague a chave acima e depois toque no botão abaixo para nos avisar pelo WhatsApp.</p>';
   } else {
