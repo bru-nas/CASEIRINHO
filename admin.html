@@ -208,7 +208,8 @@ const RECIPE_DEFAULT = {
     pimenta_malagueta:   { "300": 0.01, "500": 0.0167, "1000": 0.0333 }, // tradicional -> tradicional picante / cheiro verde -> cheiro verde picante
     acafrao:             { "300": 0.05, "500": 0.05, "1000": 0.10 }, // toque caipira
     mix_pimentas_aromat: { "300": 0.05, "500": 0.05, "1000": 0.10 }, // toque caipira
-    fumaca_po:           { "300": 0.05, "500": 0.05, "1000": 0.10 }, // toque caseiro
+    fumaca_po:           { "300": 0.05, "500": 0.0833, "1000": 0.1667 }, // toque caseiro
+    paprica_picante:     { "300": 0.05, "500": 0.0833, "1000": 0.1667 }, // toque caseiro
     cominho:             { "300": 0.05, "500": 0.05, "1000": 0.10 }, // toque baiano
     pimenta_do_reino:    { "300": 0.05, "500": 0.05, "1000": 0.10 }, // toque baiano
     salsa:                { "300": 0.05, "500": 0.05, "1000": 0.10 }, // toque baiano
@@ -294,8 +295,9 @@ const PRODUCTION_CHAINS = [
 ];
 const WILDCARD_PRODUCT = "pure"; // pode ser combinado em qualquer lote com espaço sobrando
 
-/* Capacidade de produção por lote */
-const BATCH_CAPACITY = { "300": 3, "500": 2, "1000": 1 };
+/* Capacidade de produção: peso total por vez (mistura tamanhos diferentes) */
+const BATCH_CAPACITY_GRAMS = 1100;
+const SIZE_GRAMS = { "300": 300, "500": 500, "1000": 1000 };
 
 /* ---------- Helpers ---------- */
 function getRecipe() {
@@ -759,7 +761,8 @@ function renderProducao(panel){
         if (nCVPic > 0) { html += `<div class="chain-step">${step}. Retire ${nCVPic} unidade(s) — já está pronto como <b>Cheiro Verde Picante</b>, embale.</div>`; step++; }
         if (nCaseiro > 0) {
           const fumaca = recipe.transform.fumaca_po[sizeKey] * nCaseiro;
-          html += `<div class="chain-step">${step}. No restante (${nCaseiro} unidade(s)), adicione ${fmtQty(fumaca)} de Fumaça em Pó — vira <b>Toque Caseiro</b>, embale.</div>`; step++;
+          const paprica = recipe.transform.paprica_picante[sizeKey] * nCaseiro;
+          html += `<div class="chain-step">${step}. No restante (${nCaseiro} unidade(s)), adicione ${fmtQty(fumaca)} de Fumaça em Pó e ${fmtQty(paprica)} de Páprica Picante — vira <b>Toque Caseiro</b>, embale.</div>`; step++;
         }
       }
     });
