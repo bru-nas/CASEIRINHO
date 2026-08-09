@@ -679,48 +679,85 @@ function renderProducao(panel){
     tradFamilyKeys.forEach(pk => { const n = u(pk, sz); tradTotalWeight += n * SIZE_GRAMS[sz]; tradTotalUnits += n; });
   });
 
+  /* ---- Pure: todo o alho dele pode ser batido junto com o alho da primeira família disponível ---- */
+  let pureUnitsRemaining = { "300": u("pure","300"), "500": u("pure","500") };
+  let pureAssignedTo = null; // "tradicional" | "cheiro_verde" | null
+
   if (tradTotalUnits > 0) {
     const numBatches = Math.ceil(tradTotalWeight / BATCH_CAPACITY_GRAMS);
     html += `<div class="batch-box"><div class="title">🧄 Família Tradicional — ${tradTotalUnits} unidade(s), ${tradTotalWeight}g no total, ~${numBatches} vez(es) de produção (capacidade 1.100g cada)</div>`;
 
-    ["300","500","1000"].forEach(sizeKey => {
-      const nTrad = u("tradicional", sizeKey);
-      const nTradPic = u("tradicional_picante", sizeKey);
-      const nBaiano = u("toque_baiano", sizeKey);
-      const nCaipira = u("toque_caipira", sizeKey);
-      const totalTradFamily = nTrad + nTradPic + nBaiano + nCaipira;
-      if (totalTradFamily === 0) return;
+    const base = recipe.dia_a_dia_base;
+    const alhoRatio = base.alho["300"] / 300;
+    const salRatio = base.sal["300"] / 300;
+    const cebolaRatio = base.cebola["300"] / 300;
+    const pimCheiroRatio = base.pimenta_cheiro["300"] / 300;
 
-      const sizeLbl = sizeKey === "1000" ? "1kg" : sizeKey + "g";
-      const base = recipe.dia_a_dia_base;
-      const totalAlho = base.alho[sizeKey] * totalTradFamily;
-      const totalSal = base.sal[sizeKey] * totalTradFamily;
-      const totalCebola = base.cebola[sizeKey] * totalTradFamily;
-      const totalPimCheiro = base.pimenta_cheiro[sizeKey] * totalTradFamily;
+    const alhoFamilia = alhoRatio * tradTotalWeight;
+    const totalSal = salRatio * tradTotalWeight;
+    const totalCebola = cebolaRatio * tradTotalWeight;
+    const totalPimCheiro = pimCheiroRatio * tradTotalWeight;
 
-      html += `<div class="chain-step" style="margin-top:10px;"><b>— Tamanho ${sizeLbl} (${totalTradFamily} unidade(s)) —</b></div>`;
-      html += `<div class="chain-step">1. Bata junto: ${fmtQty(totalAlho)} de Alho, ${fmtQty(totalSal)} de Sal, ${fmtQty(totalCebola)} de Cebola, ${fmtQty(totalPimCheiro)} de Pimenta de Cheiro.</div>`;
-      let step = 2;
-      if (nTrad > 0) { html += `<div class="chain-step">${step}. Retire ${nTrad} unidade(s) — já está pronto como <b>Tradicional</b>, embale.</div>`; step++; }
-      if (nCaipira > 0) {
-        const acaf = recipe.transform.acafrao[sizeKey] * nCaipira;
-        const mix = recipe.transform.mix_pimentas_aromat[sizeKey] * nCaipira;
-        html += `<div class="chain-step">${step}. Retire ${nCaipira} unidade(s), adicione ${fmtQty(acaf)} de Açafrão e ${fmtQty(mix)} de Mix de Pimentas Aromáticas — vira <b>Toque Caipira</b>, embale.</div>`; step++;
+    // aproveita e bate junto o alho do Pure, se houver
+    const pureUnidades300 = pureUnitsRemaining["300"], pureUnidades500 = pureUnitsRemaining["500"];
+    const pureTemAlgo = pureUnidades300 + pureUnidades500 > 0;
+    let pureAlho = 0;
+    if (pureTemAlgo) {
+      pureAlho = recipe.pure.alho["300"] * pureUnidades300 + recipe.pure.alho["500"] * pureUnidades500;
+      pureAssignedTo = "tradicional";
+    }
+
+    let step = 1;
+    if (pureTemAlgo) {
+      html += `<div class="chain-step">${step}. Bata todo o Alho de uma vez: ${fmtQty(alhoFamilia + pureAlho)} (${fmtQty(alhoFamilia)} da família + ${fmtQty(pureAlho)} do Pure).</div>`; step++;
+      const purePorTamanho = [pureUnidades300 > 0 ? `${pureUnidades300} de 300g` : null, pureUnidades500 > 0 ? `${pureUnidades500} de 500g` : null].filter(Boolean).join(" + ");
+      html += `<div class="chain-step">${step}. Retire ${fmtQty(pureAlho)} de Alho já batido (${purePorTamanho}) — é o <b>Pure</b>, misture o azeite depois e embale.</div>`; step++;
+      html += `<div class="chain-step">${step}. Com o Alho restante (${fmtQty(alhoFamilia)}), misture ${fmtQty(totalSal)} de Sal, ${fmtQty(totalCebola)} de Cebola e ${fmtQty(totalPimCheiro)} de Pimenta de Cheiro. Rende ${tradTotalWeight}g de massa (${tradTotalUnits} unidade(s)).</div>`; step++;
+    } else {
+      html += `<div class="chain-step">${step}. Bata tudo junto (misturando os tamanhos): ${fmtQty(alhoFamilia)} de Alho, ${fmtQty(totalSal)} de Sal, ${fmtQty(totalCebola)} de Cebola, ${fmtQty(totalPimCheiro)} de Pimenta de Cheiro. Rende ${tradTotalWeight}g de massa (${tradTotalUnits} unidade(s)).</div>`; step++;
+    }
+
+    // Separa direto o que fica Tradicional puro (soma de todos os tamanhos)
+    const tradPorTamanho = ["300","500","1000"].filter(sz => u("tradicional", sz) > 0).map(sz => `${u("tradicional", sz)} de ${sz==="1000"?"1kg":sz+"g"}`);
+    if (tradPorTamanho.length > 0) {
+      html += `<div class="chain-step">${step}. Retire ${tradPorTamanho.join(" + ")} — já é <b>Tradicional</b>, embale cada um no tamanho certo.</div>`; step++;
+    }
+
+    // Toque Caipira — direto do Tradicional, soma por tamanho (valores ainda não são 100% proporcionais entre tamanhos)
+    const caipiraSizes = ["300","500","1000"].filter(sz => u("toque_caipira", sz) > 0);
+    if (caipiraSizes.length > 0) {
+      const caipiraPorTamanho = caipiraSizes.map(sz => `${u("toque_caipira", sz)} de ${sz==="1000"?"1kg":sz+"g"}`);
+      let acafTotal = 0, mixTotal = 0;
+      caipiraSizes.forEach(sz => { acafTotal += recipe.transform.acafrao[sz] * u("toque_caipira", sz); mixTotal += recipe.transform.mix_pimentas_aromat[sz] * u("toque_caipira", sz); });
+      html += `<div class="chain-step">${step}. Retire ${caipiraPorTamanho.join(" + ")}, adicione ${fmtQty(acafTotal)} de Açafrão e ${fmtQty(mixTotal)} de Mix de Pimentas Aromáticas — vira <b>Toque Caipira</b>, embale cada um no tamanho certo.</div>`; step++;
+    }
+
+    // Tradicional Picante + Toque Baiano (picante é proporcional, pode somar por peso)
+    const picanteBaianoSizes = ["300","500","1000"].filter(sz => u("tradicional_picante", sz) + u("toque_baiano", sz) > 0);
+    if (picanteBaianoSizes.length > 0) {
+      const picanteWeight = picanteBaianoSizes.reduce((s, sz) => s + (u("tradicional_picante", sz) + u("toque_baiano", sz)) * SIZE_GRAMS[sz], 0);
+      const malaguetaRatio = recipe.transform.pimenta_malagueta["300"] / 300;
+      const malaguetaTotal = malaguetaRatio * picanteWeight;
+      html += `<div class="chain-step">${step}. No restante (${picanteWeight}g), adicione ${fmtQty(malaguetaTotal)} de Pimenta Malagueta — vira massa de <b>Tradicional Picante</b>.</div>`; step++;
+
+      const picanteSizes = ["300","500","1000"].filter(sz => u("tradicional_picante", sz) > 0);
+      if (picanteSizes.length > 0) {
+        const picantePorTamanho = picanteSizes.map(sz => `${u("tradicional_picante", sz)} de ${sz==="1000"?"1kg":sz+"g"}`);
+        html += `<div class="chain-step">${step}. Retire ${picantePorTamanho.join(" + ")} — já é <b>Tradicional Picante</b>, embale cada um no tamanho certo.</div>`; step++;
       }
-      if (nTradPic + nBaiano > 0) {
-        const nPic = nTradPic + nBaiano;
-        const malagueta = recipe.transform.pimenta_malagueta[sizeKey] * nPic;
-        html += `<div class="chain-step">${step}. No restante (${nPic} unidade(s)), adicione ${fmtQty(malagueta)} de Pimenta Malagueta — vira massa de <b>Tradicional Picante</b>.</div>`; step++;
-        if (nTradPic > 0) { html += `<div class="chain-step">${step}. Retire ${nTradPic} unidade(s) — já está pronto como <b>Tradicional Picante</b>, embale.</div>`; step++; }
-        if (nBaiano > 0) {
-          const cominho = recipe.transform.cominho[sizeKey] * nBaiano;
-          const reino = recipe.transform.pimenta_do_reino[sizeKey] * nBaiano;
-          const salsa = recipe.transform.salsa[sizeKey] * nBaiano;
-          const dende = recipe.transform.azeite_dende[sizeKey] * nBaiano;
-          html += `<div class="chain-step">${step}. No restante (${nBaiano} unidade(s)), adicione ${fmtQty(cominho)} de Cominho, ${fmtQty(reino)} de Pimenta do Reino, ${fmtQty(salsa)} de Salsa e ${fmtQty(dende)} de Azeite de Dendê — vira <b>Toque Baiano</b>, embale.</div>`; step++;
-        }
+
+      const baianoSizes = ["300","500","1000"].filter(sz => u("toque_baiano", sz) > 0);
+      if (baianoSizes.length > 0) {
+        const baianoPorTamanho = baianoSizes.map(sz => `${u("toque_baiano", sz)} de ${sz==="1000"?"1kg":sz+"g"}`);
+        let cominhoTotal=0, reinoTotal=0, salsaTotal=0, dendeTotal=0;
+        baianoSizes.forEach(sz => {
+          const n = u("toque_baiano", sz);
+          cominhoTotal += recipe.transform.cominho[sz]*n; reinoTotal += recipe.transform.pimenta_do_reino[sz]*n;
+          salsaTotal += recipe.transform.salsa[sz]*n; dendeTotal += recipe.transform.azeite_dende[sz]*n;
+        });
+        html += `<div class="chain-step">${step}. No restante (${baianoPorTamanho.join(" + ")}), adicione ${fmtQty(cominhoTotal)} de Cominho, ${fmtQty(reinoTotal)} de Pimenta do Reino, ${fmtQty(salsaTotal)} de Salsa e ${fmtQty(dendeTotal)} de Azeite de Dendê — vira <b>Toque Baiano</b>, embale cada um no tamanho certo.</div>`; step++;
       }
-    });
+    }
     html += `</div>`;
   }
 
@@ -735,84 +772,81 @@ function renderProducao(panel){
     const numBatches = Math.ceil(cvTotalWeight / BATCH_CAPACITY_GRAMS);
     html += `<div class="batch-box"><div class="title">🌿 Família Cheiro Verde — ${cvTotalUnits} unidade(s), ${cvTotalWeight}g no total, ~${numBatches} vez(es) de produção (capacidade 1.100g cada)</div>`;
 
-    ["300","500","1000"].forEach(sizeKey => {
-      const nCV = u("cheiro_verde", sizeKey);
-      const nCVPic = u("cheiro_verde_picante", sizeKey);
-      const nCaseiro = u("toque_caseiro", sizeKey);
-      const totalCVFamily = nCV + nCVPic + nCaseiro;
-      if (totalCVFamily === 0) return;
+    const base = recipe.dia_a_dia_base;
+    const alhoRatio = base.alho["300"] / 300;
+    const salRatio = base.sal["300"] / 300;
+    const cebolaRatio = base.cebola["300"] / 300;
+    const pimCheiroRatio = base.pimenta_cheiro["300"] / 300;
+    const folhaRatio = recipe.cheiro_verde_extra.cheiro_verde_folha["300"] / 300;
 
-      const sizeLbl = sizeKey === "1000" ? "1kg" : sizeKey + "g";
-      const base = recipe.dia_a_dia_base;
-      const folha = recipe.cheiro_verde_extra.cheiro_verde_folha[sizeKey] * totalCVFamily;
-      const totalAlho = base.alho[sizeKey] * totalCVFamily;
-      const totalSal = base.sal[sizeKey] * totalCVFamily;
-      const totalCebola = base.cebola[sizeKey] * totalCVFamily;
-      const totalPimCheiro = base.pimenta_cheiro[sizeKey] * totalCVFamily;
+    const alhoFamilia = alhoRatio * cvTotalWeight;
+    const totalSal = salRatio * cvTotalWeight;
+    const totalCebola = cebolaRatio * cvTotalWeight;
+    const totalPimCheiro = pimCheiroRatio * cvTotalWeight;
+    const totalFolha = folhaRatio * cvTotalWeight;
 
-      html += `<div class="chain-step" style="margin-top:10px;"><b>— Tamanho ${sizeLbl} (${totalCVFamily} unidade(s)) —</b></div>`;
-      html += `<div class="chain-step">1. Bata junto: ${fmtQty(totalAlho)} de Alho, ${fmtQty(totalSal)} de Sal, ${fmtQty(totalCebola)} de Cebola, ${fmtQty(totalPimCheiro)} de Pimenta de Cheiro, ${fmtQty(folha)} de Cheiro Verde.</div>`;
-      let step = 2;
-      if (nCV > 0) { html += `<div class="chain-step">${step}. Retire ${nCV} unidade(s) — já está pronto como <b>Cheiro Verde</b>, embale.</div>`; step++; }
-      if (nCVPic + nCaseiro > 0) {
-        const nPic = nCVPic + nCaseiro;
-        const malagueta = recipe.transform.pimenta_malagueta[sizeKey] * nPic;
-        html += `<div class="chain-step">${step}. No restante (${nPic} unidade(s)), adicione ${fmtQty(malagueta)} de Pimenta Malagueta — vira massa de <b>Cheiro Verde Picante</b>.</div>`; step++;
-        if (nCVPic > 0) { html += `<div class="chain-step">${step}. Retire ${nCVPic} unidade(s) — já está pronto como <b>Cheiro Verde Picante</b>, embale.</div>`; step++; }
-        if (nCaseiro > 0) {
-          const fumaca = recipe.transform.fumaca_po[sizeKey] * nCaseiro;
-          const paprica = recipe.transform.paprica_picante[sizeKey] * nCaseiro;
-          html += `<div class="chain-step">${step}. No restante (${nCaseiro} unidade(s)), adicione ${fmtQty(fumaca)} de Fumaça em Pó e ${fmtQty(paprica)} de Páprica Picante — vira <b>Toque Caseiro</b>, embale.</div>`; step++;
-        }
+    const pureUnidades300 = pureAssignedTo ? 0 : pureUnitsRemaining["300"];
+    const pureUnidades500 = pureAssignedTo ? 0 : pureUnitsRemaining["500"];
+    const pureTemAlgo = pureUnidades300 + pureUnidades500 > 0;
+    let pureAlho = 0;
+    if (pureTemAlgo) {
+      pureAlho = recipe.pure.alho["300"] * pureUnidades300 + recipe.pure.alho["500"] * pureUnidades500;
+      pureAssignedTo = "cheiro_verde";
+    }
+
+    let step = 1;
+    if (pureTemAlgo) {
+      html += `<div class="chain-step">${step}. Bata todo o Alho de uma vez: ${fmtQty(alhoFamilia + pureAlho)} (${fmtQty(alhoFamilia)} da família + ${fmtQty(pureAlho)} do Pure).</div>`; step++;
+      const purePorTamanho = [pureUnidades300 > 0 ? `${pureUnidades300} de 300g` : null, pureUnidades500 > 0 ? `${pureUnidades500} de 500g` : null].filter(Boolean).join(" + ");
+      html += `<div class="chain-step">${step}. Retire ${fmtQty(pureAlho)} de Alho já batido (${purePorTamanho}) — é o <b>Pure</b>, misture o azeite depois e embale.</div>`; step++;
+      html += `<div class="chain-step">${step}. Com o Alho restante (${fmtQty(alhoFamilia)}), misture ${fmtQty(totalSal)} de Sal, ${fmtQty(totalCebola)} de Cebola, ${fmtQty(totalPimCheiro)} de Pimenta de Cheiro e ${fmtQty(totalFolha)} de Cheiro Verde. Rende ${cvTotalWeight}g de massa (${cvTotalUnits} unidade(s)).</div>`; step++;
+    } else {
+      html += `<div class="chain-step">${step}. Bata tudo junto (misturando os tamanhos): ${fmtQty(alhoFamilia)} de Alho, ${fmtQty(totalSal)} de Sal, ${fmtQty(totalCebola)} de Cebola, ${fmtQty(totalPimCheiro)} de Pimenta de Cheiro, ${fmtQty(totalFolha)} de Cheiro Verde. Rende ${cvTotalWeight}g de massa (${cvTotalUnits} unidade(s)).</div>`; step++;
+    }
+
+    const cvPorTamanho = ["300","500","1000"].filter(sz => u("cheiro_verde", sz) > 0).map(sz => `${u("cheiro_verde", sz)} de ${sz==="1000"?"1kg":sz+"g"}`);
+    if (cvPorTamanho.length > 0) {
+      html += `<div class="chain-step">${step}. Retire ${cvPorTamanho.join(" + ")} — já é <b>Cheiro Verde</b>, embale cada um no tamanho certo.</div>`; step++;
+    }
+
+    const picanteCaseiroSizes = ["300","500","1000"].filter(sz => u("cheiro_verde_picante", sz) + u("toque_caseiro", sz) > 0);
+    if (picanteCaseiroSizes.length > 0) {
+      const picanteWeight = picanteCaseiroSizes.reduce((s, sz) => s + (u("cheiro_verde_picante", sz) + u("toque_caseiro", sz)) * SIZE_GRAMS[sz], 0);
+      const malaguetaRatio = recipe.transform.pimenta_malagueta["300"] / 300;
+      const malaguetaTotal = malaguetaRatio * picanteWeight;
+      html += `<div class="chain-step">${step}. No restante (${picanteWeight}g), adicione ${fmtQty(malaguetaTotal)} de Pimenta Malagueta — vira massa de <b>Cheiro Verde Picante</b>.</div>`; step++;
+
+      const picanteSizes = ["300","500","1000"].filter(sz => u("cheiro_verde_picante", sz) > 0);
+      if (picanteSizes.length > 0) {
+        const picantePorTamanho = picanteSizes.map(sz => `${u("cheiro_verde_picante", sz)} de ${sz==="1000"?"1kg":sz+"g"}`);
+        html += `<div class="chain-step">${step}. Retire ${picantePorTamanho.join(" + ")} — já é <b>Cheiro Verde Picante</b>, embale cada um no tamanho certo.</div>`; step++;
       }
-    });
+
+      const caseiroSizes = ["300","500","1000"].filter(sz => u("toque_caseiro", sz) > 0);
+      if (caseiroSizes.length > 0) {
+        const caseiroWeight = caseiroSizes.reduce((s, sz) => s + u("toque_caseiro", sz) * SIZE_GRAMS[sz], 0);
+        const fumacaRatio = recipe.transform.fumaca_po["300"] / 300;
+        const paprica_ratio = recipe.transform.paprica_picante["300"] / 300;
+        const fumacaTotal = fumacaRatio * caseiroWeight;
+        const paprica_total = paprica_ratio * caseiroWeight;
+        const caseiroPorTamanho = caseiroSizes.map(sz => `${u("toque_caseiro", sz)} de ${sz==="1000"?"1kg":sz+"g"}`);
+        html += `<div class="chain-step">${step}. No restante (${caseiroPorTamanho.join(" + ")}), adicione ${fmtQty(fumacaTotal)} de Fumaça em Pó e ${fmtQty(paprica_total)} de Páprica Picante — vira <b>Toque Caseiro</b>, embale cada um no tamanho certo.</div>`; step++;
+      }
+    }
     html += `</div>`;
   }
 
-  /* ---- Pure: encaixa no espaço sobrando das famílias antes de criar produção separada ---- */
-  let pureRemaining = {}; // sizeKey -> unidades restantes
-  ["300","500"].forEach(sz => { pureRemaining[sz] = u("pure", sz); });
-  let pureTotalUnits = pureRemaining["300"] + pureRemaining["500"];
+  /* ---- Pure que sobrou sem família pra combinar o alho junto ---- */
+  const pureSobra300 = pureAssignedTo ? 0 : pureUnitsRemaining["300"];
+  const pureSobra500 = pureAssignedTo ? 0 : pureUnitsRemaining["500"];
+  const pureSobraUnidades = pureSobra300 + pureSobra500;
 
-  if (pureTotalUnits > 0) {
-    const tradLeftover = tradTotalUnits > 0 ? (Math.ceil(tradTotalWeight / BATCH_CAPACITY_GRAMS) * BATCH_CAPACITY_GRAMS) - tradTotalWeight : 0;
-    const cvLeftover = cvTotalUnits > 0 ? (Math.ceil(cvTotalWeight / BATCH_CAPACITY_GRAMS) * BATCH_CAPACITY_GRAMS) - cvTotalWeight : 0;
-
-    const encaixes = []; // {familia, sizeKey, qtd}
-    [["Tradicional", tradLeftover], ["Cheiro Verde", cvLeftover]].forEach(([familia, leftover]) => {
-      let espacoDisponivel = leftover;
-      ["500","300"].forEach(sz => {
-        while (pureRemaining[sz] > 0 && espacoDisponivel >= SIZE_GRAMS[sz]) {
-          pureRemaining[sz]--;
-          espacoDisponivel -= SIZE_GRAMS[sz];
-          const existing = encaixes.find(e => e.familia === familia && e.sizeKey === sz);
-          if (existing) existing.qtd++; else encaixes.push({ familia, sizeKey: sz, qtd: 1 });
-        }
-      });
-    });
-
-    if (encaixes.length > 0) {
-      html += `<div class="batch-box"><div class="title">🫙 Pure — encaixe no espaço sobrando</div>`;
-      encaixes.forEach(e => {
-        const alhoQtd = recipe.pure.alho[e.sizeKey] * e.qtd;
-        html += `<div class="chain-step">Combine <b>${e.qtd} unidade(s) de Pure (${e.sizeKey}g)</b> na mesma batida da família <b>${e.familia}</b> — bata ${fmtQty(alhoQtd)} de Alho puro à parte (sem azeite), depois misture o azeite e embale junto, sem misturar com a massa dos outros temperos.</div>`;
-      });
-      html += `</div>`;
-    }
-  }
-
-  const pureLeftoverWeight = (pureRemaining["300"]||0)*300 + (pureRemaining["500"]||0)*500;
-  const pureLeftoverUnits = (pureRemaining["300"]||0) + (pureRemaining["500"]||0);
-
-  if (pureLeftoverUnits > 0) {
-    const numBatches = Math.ceil(pureLeftoverWeight / BATCH_CAPACITY_GRAMS);
-    html += `<div class="batch-box"><div class="title">🫙 Pure — produção separada — ${pureLeftoverUnits} unidade(s), ${pureLeftoverWeight}g, ~${numBatches} vez(es) de produção (capacidade 1.100g cada)</div>`;
-    ["300","500"].forEach(sizeKey => {
-      const nPure = pureRemaining[sizeKey] || 0;
-      if (nPure === 0) return;
-      const alhoPure = recipe.pure.alho[sizeKey] * nPure;
-      html += `<div class="chain-step" style="margin-top:6px;">— Tamanho ${sizeKey}g (${nPure} unidade(s)): bata ${fmtQty(alhoPure)} de Alho puro, depois misture o azeite.</div>`;
-    });
+  if (pureSobraUnidades > 0) {
+    const pureSobraWeight = pureSobra300*300 + pureSobra500*500;
+    const numBatches = Math.ceil(pureSobraWeight / BATCH_CAPACITY_GRAMS);
+    html += `<div class="batch-box"><div class="title">🫙 Pure — ${pureSobraUnidades} unidade(s), ${pureSobraWeight}g, ~${numBatches} vez(es) de produção (capacidade 1.100g cada)</div>`;
+    if (pureSobra300 > 0) { const a = recipe.pure.alho["300"]*pureSobra300; html += `<div class="chain-step">— 300g (${pureSobra300} unidade(s)): bata ${fmtQty(a)} de Alho puro, depois misture o azeite.</div>`; }
+    if (pureSobra500 > 0) { const a = recipe.pure.alho["500"]*pureSobra500; html += `<div class="chain-step">— 500g (${pureSobra500} unidade(s)): bata ${fmtQty(a)} de Alho puro, depois misture o azeite.</div>`; }
     html += `</div>`;
   }
 
