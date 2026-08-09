@@ -515,7 +515,7 @@ function renderPedidos(panel){
       const pm = o.paymentMethod;
       const pmBadge = pm === "pix" ? '<span class="badge" style="background:var(--gold); color:var(--brown);">Pix</span>' : pm === "card" ? '<span class="badge" style="background:var(--brown);">Cartão na entrega</span>' : "";
       const originBadge = o.source === "app" ? '<span class="badge app">App</span>' : `<span class="badge platform">${o.platform || "Fora"}</span>`;
-      const orderTotal = (o.items||[]).reduce((s,i)=>s+(i.price||0),0) + (o.deliveryFee||0);
+      const orderTotal = (o.items||[]).reduce((s,i)=>s+(i.price||0),0) + (o.deliveryFee||0) - (o.desconto||0);
 
       html += `<div class="order-card">
         <div class="order-card-top">
@@ -523,8 +523,9 @@ function renderPedidos(panel){
           <button class="delete-btn" onclick="deleteOrder('${o.source}','${o.id}')">Excluir</button>
         </div>
         <div class="item-list">
-          ${(o.items||[]).map(i => `<div class="item-row"><span>${i.prodLabel} <span class="item-size">${i.sizeLabel}</span></span><span class="item-price">R$ ${(i.price||0).toFixed(2)}</span></div>`).join("")}
+          ${(o.items||[]).map(i => `<div class="item-row"><span>${i.prodLabel} <span class="item-size">${i.sizeLabel}</span>${i.isGift?' <span class="badge" style="background:var(--gold); color:var(--brown);">🎁 presente</span>':''}</span><span class="item-price">R$ ${(i.price||0).toFixed(2)}</span></div>`).join("")}
           ${o.deliveryFee > 0 ? `<div class="item-row"><span>Taxa de entrega</span><span class="item-price">R$ ${o.deliveryFee.toFixed(2)}</span></div>` : ""}
+          ${o.desconto > 0 ? `<div class="item-row"><span>Desconto</span><span class="item-price" style="color:var(--red);">− R$ ${o.desconto.toFixed(2)}</span></div>` : ""}
         </div>
         <div class="order-card-total">Total: R$ ${orderTotal.toFixed(2)}</div>
         <div class="stepper">
@@ -918,7 +919,7 @@ function renderProducao(panel){
 
 /* ============ TAB: Fora do App / Plataformas ============ */
 let manualCart = [];
-let manualFormState = { customer: "", phone: "", platform: PLATFORMS[0], hasDeliveryFee: false, deliveryFeeValue: 15 };
+let manualFormState = { customer: "", phone: "", platform: PLATFORMS[0], hasDeliveryFee: false, deliveryFeeValue: 15, desconto: 0 };
 let adminOrigemCoords = null;
 let adminFreteCalculado = null;
 let adminCepDebounceTimer = null;
@@ -995,6 +996,10 @@ function renderPlataformas(panel){
     <div><label>Tamanho / opção</label><select id="m_size"></select></div>
     <div><label>Valor unitário de venda (R$)</label><input type="number" step="0.01" id="m_price" placeholder="Ex: 12.00"></div>
   </div>
+  <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-bottom:10px;">
+    <input type="checkbox" id="m_isGift" style="width:auto;">
+    🎁 É um presente/cortesia (não cobrar esse produto)
+  </label>
   <div class="card" style="margin-bottom:12px;">
     <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
       <input type="checkbox" id="m_hasDeliveryFee" ${manualFormState.hasDeliveryFee?'checked':''} onchange="manualFormState.hasDeliveryFee = this.checked; renderMain();" style="width:auto;">
@@ -1014,11 +1019,13 @@ function renderPlataformas(panel){
   } else {
     const cartTotal = manualCart.reduce((s,i)=>s+i.price,0);
     const feeToShow = manualFormState.hasDeliveryFee ? manualFormState.deliveryFeeValue : 0;
+    const descontoToShow = manualFormState.desconto || 0;
     html += `<div class="item-list" style="margin-top:8px;">
-      ${manualCart.map((i, idx) => `<div class="item-row"><span>${i.prodLabel} <span class="item-size">${i.sizeLabel}</span></span><span style="display:flex; align-items:center; gap:8px;"><span class="item-price">R$ ${i.price.toFixed(2)}</span><button class="delete-btn" onclick="removeFromManualCart(${idx})">Remover</button></span></div>`).join("")}
+      ${manualCart.map((i, idx) => `<div class="item-row"><span>${i.prodLabel} <span class="item-size">${i.sizeLabel}</span>${i.isGift?' <span class="badge" style="background:var(--gold); color:var(--brown);">🎁 presente</span>':''}</span><span style="display:flex; align-items:center; gap:8px;"><span class="item-price">R$ ${i.price.toFixed(2)}</span><button class="delete-btn" onclick="removeFromManualCart(${idx})">Remover</button></span></div>`).join("")}
     </div>
     ${feeToShow > 0 ? `<div class="item-row" style="margin-top:6px;"><span>Taxa de entrega</span><span class="item-price">R$ ${feeToShow.toFixed(2)}</span></div>` : ""}
-    <div style="text-align:right; font-weight:700; margin-top:6px;">Total do pedido: R$ ${(cartTotal+feeToShow).toFixed(2)}</div>`;
+    <div style="margin-top:10px;"><label>Desconto (R$)</label><input type="number" step="0.01" id="m_desconto" value="${manualFormState.desconto || ''}" placeholder="0.00" oninput="manualFormState.desconto = parseFloat(this.value)||0; document.getElementById('m_totalPreview').textContent='R$ '+(${cartTotal}+${feeToShow}-(parseFloat(this.value)||0)).toFixed(2);"></div>
+    <div style="text-align:right; font-weight:700; margin-top:6px;">Total do pedido: <span id="m_totalPreview">R$ ${(cartTotal+feeToShow-descontoToShow).toFixed(2)}</span></div>`;
   }
   html += `<button class="btn" ${manualCart.length===0?"disabled":""} onclick="registerManualOrder()">Registrar pedido completo</button>`;
 
@@ -1028,15 +1035,16 @@ function renderPlataformas(panel){
   } else {
     const sorted = [...STATE.manualOrders].sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
     html += sorted.map(o => {
-      const total = (o.items||[]).reduce((s,i)=>s+(i.price||0),0) + (o.deliveryFee||0);
+      const total = (o.items||[]).reduce((s,i)=>s+(i.price||0),0) + (o.deliveryFee||0) - (o.desconto||0);
       return `<div class="order-card">
         <div class="order-card-top">
           <div><b>${o.customer}</b> <span class="badge platform">${o.platform}</span></div>
           <button class="delete-btn" onclick="deleteOrder('manual','${o.id}')">Excluir</button>
         </div>
         <div class="item-list">
-          ${(o.items||[]).map(i => `<div class="item-row"><span>${i.prodLabel} <span class="item-size">${i.sizeLabel}</span></span><span class="item-price">R$ ${(i.price||0).toFixed(2)}</span></div>`).join("")}
+          ${(o.items||[]).map(i => `<div class="item-row"><span>${i.prodLabel} <span class="item-size">${i.sizeLabel}</span>${i.isGift?' <span class="badge" style="background:var(--gold); color:var(--brown);">🎁 presente</span>':''}</span><span class="item-price">R$ ${(i.price||0).toFixed(2)}</span></div>`).join("")}
           ${o.deliveryFee > 0 ? `<div class="item-row"><span>Taxa de entrega</span><span class="item-price">R$ ${o.deliveryFee.toFixed(2)}</span></div>` : ""}
+          ${o.desconto > 0 ? `<div class="item-row"><span>Desconto</span><span class="item-price" style="color:var(--red);">− R$ ${o.desconto.toFixed(2)}</span></div>` : ""}
         </div>
         <div class="order-card-total">Total: R$ ${total.toFixed(2)}</div>
       </div>`;
@@ -1065,8 +1073,9 @@ function addToManualCart(){
   const sizeOpt = document.getElementById("m_size").selectedOptions[0];
   const sizeKey = sizeOpt.value;
   const sizeLabel = sizeOpt.textContent.split(" — ")[0];
-  const price = parseFloat(document.getElementById("m_price").value) || 0;
-  manualCart.push({ lineKey, prodKey, prodLabel: prod.label, sizeKey, sizeLabel, price });
+  const isGift = document.getElementById("m_isGift").checked;
+  const price = isGift ? 0 : (parseFloat(document.getElementById("m_price").value) || 0);
+  manualCart.push({ lineKey, prodKey, prodLabel: prod.label, sizeKey, sizeLabel, price, isGift });
   renderMain();
 }
 
@@ -1080,11 +1089,13 @@ async function registerManualOrder(){
   const phone = manualFormState.phone.trim();
   const platform = manualFormState.platform;
   const deliveryFee = manualFormState.hasDeliveryFee ? (manualFormState.deliveryFeeValue || 0) : 0;
+  const desconto = manualFormState.desconto || 0;
   const record = {
     id: "man_" + Date.now() + "_" + Math.floor(Math.random()*1000),
     customer, phone, platform,
     items: manualCart.map(i => ({ ...i })),
     deliveryFee,
+    desconto,
     produzido: false,
     pago: false,
     entregue: false,
@@ -1096,7 +1107,7 @@ async function registerManualOrder(){
     await pushRecord("pedidos_manuais", record);
   }
   manualCart = [];
-  manualFormState = { customer: "", phone: "", platform: PLATFORMS[0], hasDeliveryFee: false, deliveryFeeValue: 15 };
+  manualFormState = { customer: "", phone: "", platform: PLATFORMS[0], hasDeliveryFee: false, deliveryFeeValue: 15, desconto: 0 };
   await loadAll();
   renderMain();
 }
@@ -1193,7 +1204,7 @@ function renderCaixa(panel){
       const appOrdersMonth = STATE.appOrders.filter(o=>monthKey(o.createdAt)===mk && o.pago);
       const productEntradas = appOrdersMonth.reduce((s,o)=>s+(o.subtotal||0),0);
       const manualOrdersMonth = STATE.manualOrders.filter(o=>monthKey(o.createdAt)===mk && o.pago && o.platform === PLATFORMS[0]);
-      const manualProductEntradas = manualOrdersMonth.reduce((s,o)=>s + (o.items||[]).reduce((s2,i)=>s2+(i.price||0),0), 0);
+      const manualProductEntradas = manualOrdersMonth.reduce((s,o)=>s + (o.items||[]).reduce((s2,i)=>s2+(i.price||0),0) - (o.desconto||0), 0);
       const shippingEntradas = appOrdersMonth.reduce((s,o)=>s+(o.shipping||0),0) + manualOrdersMonth.reduce((s,o)=>s+(o.deliveryFee||0),0);
       const repasseEntradas = STATE.repasses.filter(r=>r.month===mk).reduce((s,r)=>s+(r.value||0),0);
       const insumoSaidas = STATE.insumoPurchases.filter(o=>monthKey(new Date(o.date).getTime())===mk).reduce((s,o)=>s+(o.cost||0),0);
