@@ -77,6 +77,9 @@
       <input type="text" id="inputNome" placeholder="Como podemos te chamar?">
       <label>WhatsApp</label>
       <input type="text" id="inputTelefone" placeholder="(62) 9xxxx-xxxx">
+      <label>CEP de entrega</label>
+      <input type="text" id="inputCep" placeholder="Ex: 74000-000" oninput="onCepInput()" maxlength="9">
+      <div id="cepStatus" style="font-size:12px; color:var(--brown-soft); margin-top:-8px; margin-bottom:10px;"></div>
     </div>
 
     <div class="box">
@@ -125,6 +128,13 @@ const MOEDOR_COST = 7; // custo fixo do moedor (R$), somado ao custo quando o cl
 const FREE_SHIPPING_THRESHOLD = 100;
 const SHIPPING_FEE = 15;
 const CARD_MACHINE_FEE_PCT = 0.03; // taxa da maquininha (cartão na entrega) — editável aqui
+const ORIGIN_CEP = "74730170"; // CEP de origem das entregas
+const DELIVERY_BRACKETS = [
+  { maxKm: 5, price: 5 },
+  { maxKm: 10, price: 10 },
+  { maxKm: 15, price: 15 },
+  { maxKm: Infinity, price: 20 },
+];
 
 /* ---------- CARDÁPIO ---------- */
 const MENU = {
@@ -326,6 +336,9 @@ function findSize(lineKey, sizeKey) {
 <script>
 var cart = [];
 var paymentMethod = "pix";
+var origemCoords = null; // {lat, lng} do CEP de origem, buscado uma vez e guardado
+var freteCalculado = null; // { km, price } do último CEP calculado
+var cepDebounceTimer = null;
 
 function goToScreen(nome){
   document.getElementById("screen-menu").classList.remove("active");
@@ -372,11 +385,78 @@ function calcularTotal(){
   var subtotal = 0;
   for (var i = 0; i < cart.length; i++) subtotal += cart[i].price;
   var shipping = 0;
-  if (subtotal > 0 && subtotal < FREE_SHIPPING_THRESHOLD) shipping = SHIPPING_FEE;
+  if (subtotal > 0 && subtotal < FREE_SHIPPING_THRESHOLD) {
+    shipping = freteCalculado ? freteCalculado.price : SHIPPING_FEE;
+  }
   var preCard = subtotal + shipping;
   var cardFee = paymentMethod === "card" ? preCard * CARD_MACHINE_FEE_PCT : 0;
   var total = preCard + cardFee;
   return { subtotal: subtotal, shipping: shipping, cardFee: cardFee, total: total };
+}
+
+function haversineKm(lat1, lng1, lat2, lng2){
+  function toRad(v){ return v * Math.PI / 180; }
+  var R = 6371;
+  var dLat = toRad(lat2 - lat1);
+  var dLng = toRad(lng2 - lng1);
+  var a = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLng/2)*Math.sin(dLng/2);
+  var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+}
+
+function faixaPreco(km){
+  for (var i = 0; i < DELIVERY_BRACKETS.length; i++) {
+    if (km <= DELIVERY_BRACKETS[i].maxKm) return DELIVERY_BRACKETS[i].price;
+  }
+  return DELIVERY_BRACKETS[DELIVERY_BRACKETS.length-1].price;
+}
+
+async function buscarCoordsCep(cepLimpo){
+  var resp = await fetch("https://cep.awesomeapi.com.br/json/" + cepLimpo);
+  if (!resp.ok) throw new Error("CEP não encontrado");
+  var data = await resp.json();
+  if (!data.lat || !data.lng) throw new Error("CEP sem coordenadas");
+  return { lat: parseFloat(data.lat), lng: parseFloat(data.lng), city: data.city || "", state: data.state || "" };
+}
+
+function onCepInput(){
+  clearTimeout(cepDebounceTimer);
+  var statusEl = document.getElementById("cepStatus");
+  var cepLimpo = document.getElementById("inputCep").value.replace(/\D/g, "");
+  freteCalculado = null;
+  if (cepLimpo.length !== 8) {
+    statusEl.textContent = "";
+    renderCheckout();
+    return;
+  }
+  statusEl.textContent = "Calculando taxa de entrega...";
+  cepDebounceTimer = setTimeout(async function(){
+    try {
+      if (!origemCoords) origemCoords = await buscarCoordsCep(ORIGIN_CEP);
+      var destino = await buscarCoordsCep(cepLimpo);
+
+      var ehSenadorCanedo = destino.city && destino.state &&
+        destino.city.trim().toLowerCase() === "senador canedo" &&
+        destino.state.trim().toUpperCase() === "GO";
+
+      if (ehSenadorCanedo) {
+        freteCalculado = { km: null, price: 10 };
+        statusEl.textContent = "Senador Canedo/GO — Taxa de entrega fixa: R$ 10,00";
+        statusEl.style.color = "var(--olive)";
+      } else {
+        var km = haversineKm(origemCoords.lat, origemCoords.lng, destino.lat, destino.lng);
+        var preco = faixaPreco(km);
+        freteCalculado = { km: km, price: preco };
+        statusEl.textContent = "Distância: ~" + km.toFixed(1) + "km — Taxa de entrega: R$ " + preco.toFixed(2);
+        statusEl.style.color = "var(--olive)";
+      }
+    } catch(e) {
+      statusEl.textContent = "Não foi possível calcular pelo CEP. Será usada a taxa padrão de R$ " + SHIPPING_FEE.toFixed(2) + ".";
+      statusEl.style.color = "#b33";
+      freteCalculado = null;
+    }
+    renderCheckout();
+  }, 600);
 }
 
 function renderCheckout(){
@@ -428,6 +508,8 @@ function finalizarPedido(){
     id: orderId,
     customer: nome,
     phone: telefone,
+    cep: document.getElementById("inputCep").value.trim(),
+    distanciaKm: freteCalculado ? freteCalculado.km : null,
     items: cart,
     subtotal: t.subtotal,
     shipping: t.shipping,
