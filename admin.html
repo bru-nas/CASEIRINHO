@@ -467,8 +467,8 @@ function renderMain(){
 
 function allOrderItems(){
   const items = [];
-  STATE.appOrders.forEach(o => { (o.items||[]).forEach(it => items.push({ customer:o.customer, ...it, source:"app", platform:null })); });
-  STATE.manualOrders.forEach(o => { (o.items||[]).forEach(it => items.push({ customer:o.customer, ...it, source:"manual", platform:o.platform })); });
+  STATE.appOrders.forEach(o => { (o.items||[]).forEach(it => items.push({ customer:o.customer, ...it, source:"app", platform:null, produzido: !!o.produzido })); });
+  STATE.manualOrders.forEach(o => { (o.items||[]).forEach(it => items.push({ customer:o.customer, ...it, source:"manual", platform:o.platform, produzido: !!o.produzido })); });
   return items;
 }
 
@@ -606,10 +606,10 @@ function toggleCompraChecklist(key) {
 }
 
 function renderCompras(panel){
-  const items = allOrderItems();
+  const items = allOrderItems().filter(i => !i.produzido);
   const { needs, potes, moedorCount } = computeInsumoNeeds(items);
   const checklist = getComprasChecklist();
-  let html = `<h2>Lista de compras</h2><div class="subtitle">Total de insumos necessários pra atender todos os pedidos registrados (app + fora + plataformas). Marque o que já comprou.</div>`;
+  let html = `<h2>Lista de compras</h2><div class="subtitle">Total de insumos necessários pra atender os pedidos ainda não produzidos (app + fora + plataformas). Marque o que já comprou.</div>`;
   const insumoKeys = Object.keys(needs);
   if (insumoKeys.length === 0) {
     html += `<div class="empty">Nenhum pedido pra calcular ainda.</div>`;
@@ -723,11 +723,11 @@ function fmtQty(v, insumo){
 
 function renderProducao(panel){
   const recipe = getRecipe();
-  const items = allOrderItems().filter(i => i.lineKey === "dia_a_dia" || i.lineKey === "pure");
+  const items = allOrderItems().filter(i => (i.lineKey === "dia_a_dia" || i.lineKey === "pure") && !i.produzido);
   const counts = {};
   items.forEach(i => { const key = `${i.prodKey}|${i.sizeKey}`; counts[key] = (counts[key]||0) + 1; });
 
-  let html = `<h2>Produção</h2><div class="subtitle">Capacidade: até 1.100g por vez, pode misturar tamanhos diferentes (ex: 2 de 300g + 1 de 500g = 1.100g). Quantidade exata de insumo pra bater e o que adicionar em cada etapa.</div>`;
+  let html = `<h2>Produção</h2><div class="subtitle">Só mostra o que ainda não foi marcado como Produzido. Capacidade: até 1.100g por vez, pode misturar tamanhos diferentes (ex: 2 de 300g + 1 de 500g = 1.100g). Quantidade exata de insumo pra bater e o que adicionar em cada etapa.</div>`;
   if (Object.keys(counts).length === 0) {
     html += `<div class="empty">Nenhum pedido de Dia a Dia ou Pure pra produzir ainda.</div>`;
     panel.innerHTML = html;
