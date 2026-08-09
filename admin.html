@@ -333,7 +333,7 @@ try {
 function localGet(key){ return JSON.parse(localStorage.getItem(key) || "[]"); }
 function localSet(key, val){ localStorage.setItem(key, JSON.stringify(val)); }
 
-let STATE = { appOrders: [], manualOrders: [], insumoPurchases: [], repasses: [], despesas: [] };
+let STATE = { appOrders: [], manualOrders: [], insumoPurchases: [], repasses: [], despesas: [], fechamentos: [] };
 
 async function loadAll(){
   if (dbReady) {
@@ -349,12 +349,15 @@ async function loadAll(){
     STATE.repasses = Object.values(rp.val() || {});
     const de = await firebase.database().ref("despesas").once("value");
     STATE.despesas = Object.values(de.val() || {});
+    const fe = await firebase.database().ref("fechamentos").once("value");
+    STATE.fechamentos = Object.values(fe.val() || {});
   } else {
     STATE.appOrders = localGet("caseirinho_pedidos_local");
     STATE.manualOrders = localGet("caseirinho_pedidos_manuais");
     STATE.insumoPurchases = localGet("caseirinho_compras_insumos");
     STATE.repasses = localGet("caseirinho_repasses");
     STATE.despesas = localGet("caseirinho_despesas");
+    STATE.fechamentos = localGet("caseirinho_fechamentos");
   }
 }
 
@@ -557,24 +560,52 @@ function computeInsumoNeeds(items){
 }
 
 /* ============ TAB: Lista de Compras ============ */
+function getComprasChecklist() {
+  try { return JSON.parse(localStorage.getItem("caseirinho_compras_checklist") || "{}"); } catch(e) { return {}; }
+}
+function toggleCompraChecklist(key) {
+  const checklist = getComprasChecklist();
+  checklist[key] = !checklist[key];
+  localStorage.setItem("caseirinho_compras_checklist", JSON.stringify(checklist));
+  renderMain();
+}
+
 function renderCompras(panel){
   const items = allOrderItems();
   const { needs, potes, moedorCount } = computeInsumoNeeds(items);
-  let html = `<h2>Lista de compras</h2><div class="subtitle">Total de insumos necessários pra atender todos os pedidos registrados (app + fora + plataformas).</div>`;
+  const checklist = getComprasChecklist();
+  let html = `<h2>Lista de compras</h2><div class="subtitle">Total de insumos necessários pra atender todos os pedidos registrados (app + fora + plataformas). Marque o que já comprou.</div>`;
   const insumoKeys = Object.keys(needs);
   if (insumoKeys.length === 0) {
     html += `<div class="empty">Nenhum pedido pra calcular ainda.</div>`;
   } else {
-    html += `<table><tr><th>Insumo</th><th>Quantidade necessária</th></tr>
-      ${insumoKeys.map(k => `<tr><td>${INSUMO_LABELS[k]||k}</td><td>${needs[k].toFixed(2)} ${k.includes("limao")?"un":"g"}</td></tr>`).join("")}
+    html += `<table><tr><th></th><th>Insumo</th><th>Quantidade necessária</th></tr>
+      ${insumoKeys.map(k => {
+        const checked = !!checklist["insumo_"+k];
+        return `<tr style="${checked?'opacity:0.5;':''}">
+          <td><input type="checkbox" ${checked?'checked':''} onchange="toggleCompraChecklist('insumo_${k}')" style="width:18px; height:18px;"></td>
+          <td style="${checked?'text-decoration:line-through;':''}">${INSUMO_LABELS[k]||k}</td>
+          <td style="${checked?'text-decoration:line-through;':''}">${needs[k].toFixed(2)} ${k.includes("limao")?"un":"g"}</td>
+        </tr>`;
+      }).join("")}
     </table>`;
   }
-  html += `<h2 style="margin-top:20px;">Embalagens e potes</h2>
-  <table><tr><th>Item</th><th>Quantidade</th></tr>
-    <tr><td>Pote de 300g</td><td>${potes["300"]||0}</td></tr>
-    <tr><td>Pote de 500g</td><td>${potes["500"]||0}</td></tr>
-    <tr><td>Pote de 1kg</td><td>${potes["1000"]||0}</td></tr>
-    <tr><td>Moedor (Saladete com moedor)</td><td>${moedorCount} — custo estimado R$ ${(moedorCount*MOEDOR_COST).toFixed(2)}</td></tr>
+  html += `<h2 style="margin-top:20px;">Embalagens e potes</h2>`;
+  const embalagensItems = [
+    { key: "pote_300", label: "Pote de 300g", qtd: potes["300"]||0 },
+    { key: "pote_500", label: "Pote de 500g", qtd: potes["500"]||0 },
+    { key: "pote_1000", label: "Pote de 1kg", qtd: potes["1000"]||0 },
+    { key: "moedor", label: "Moedor (Saladete com moedor)", qtd: moedorCount, extra: ` — custo estimado R$ ${(moedorCount*MOEDOR_COST).toFixed(2)}` },
+  ];
+  html += `<table><tr><th></th><th>Item</th><th>Quantidade</th></tr>
+    ${embalagensItems.map(it => {
+      const checked = !!checklist["embalagem_"+it.key];
+      return `<tr style="${checked?'opacity:0.5;':''}">
+        <td><input type="checkbox" ${checked?'checked':''} onchange="toggleCompraChecklist('embalagem_${it.key}')" style="width:18px; height:18px;"></td>
+        <td style="${checked?'text-decoration:line-through;':''}">${it.label}</td>
+        <td style="${checked?'text-decoration:line-through;':''}">${it.qtd}${it.extra||""}</td>
+      </tr>`;
+    }).join("")}
   </table>
   <div class="config-note">O custo dos potes não entra automático porque varia conforme o lote de compra — lance o valor pago na aba Caixa quando comprar.</div>`;
   panel.innerHTML = html;
@@ -855,7 +886,7 @@ function renderProducao(panel){
 
 /* ============ TAB: Fora do App / Plataformas ============ */
 let manualCart = [];
-let manualFormState = { customer: "", phone: "", platform: PLATFORMS[0] };
+let manualFormState = { customer: "", phone: "", platform: PLATFORMS[0], hasDeliveryFee: false, deliveryFeeValue: 15 };
 
 function renderPlataformas(panel){
   let html = `<h2>Pedidos fora do app</h2><div class="subtitle">Adicione quantos produtos quiser e registre tudo junto como um pedido só.</div>`;
@@ -868,16 +899,26 @@ function renderPlataformas(panel){
     <div><label>Tamanho / opção</label><select id="m_size"></select></div>
     <div><label>Valor unitário de venda (R$)</label><input type="number" step="0.01" id="m_price" placeholder="Ex: 12.00"></div>
   </div>
+  <div class="card" style="margin-bottom:12px;">
+    <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+      <input type="checkbox" id="m_hasDeliveryFee" ${manualFormState.hasDeliveryFee?'checked':''} onchange="manualFormState.hasDeliveryFee = this.checked; renderMain();" style="width:auto;">
+      Cobrar taxa de entrega nesse pedido?
+    </label>
+    ${manualFormState.hasDeliveryFee ? `<div style="margin-top:8px;"><label>Valor da taxa (R$)</label><input type="number" step="0.01" id="m_deliveryFeeValue" value="${manualFormState.deliveryFeeValue}" oninput="manualFormState.deliveryFeeValue = parseFloat(this.value)||0;"></div>` : ""}
+  </div>
   <button class="btn secondary" onclick="addToManualCart()">+ Adicionar produto ao pedido</button>`;
 
   html += `<div style="margin-top:16px;"><b>Itens do pedido atual</b></div>`;
   if (manualCart.length === 0) {
     html += `<div class="empty">Nenhum produto adicionado ainda. Adiciona os produtos e depois clica em "Registrar pedido".</div>`;
   } else {
+    const cartTotal = manualCart.reduce((s,i)=>s+i.price,0);
+    const feeToShow = manualFormState.hasDeliveryFee ? manualFormState.deliveryFeeValue : 0;
     html += `<div class="item-list" style="margin-top:8px;">
       ${manualCart.map((i, idx) => `<div class="item-row"><span>${i.prodLabel} <span class="item-size">${i.sizeLabel}</span></span><span style="display:flex; align-items:center; gap:8px;"><span class="item-price">R$ ${i.price.toFixed(2)}</span><button class="delete-btn" onclick="removeFromManualCart(${idx})">Remover</button></span></div>`).join("")}
     </div>
-    <div style="text-align:right; font-weight:700; margin-top:6px;">Total do pedido: R$ ${manualCart.reduce((s,i)=>s+i.price,0).toFixed(2)}</div>`;
+    ${feeToShow > 0 ? `<div class="item-row" style="margin-top:6px;"><span>Taxa de entrega</span><span class="item-price">R$ ${feeToShow.toFixed(2)}</span></div>` : ""}
+    <div style="text-align:right; font-weight:700; margin-top:6px;">Total do pedido: R$ ${(cartTotal+feeToShow).toFixed(2)}</div>`;
   }
   html += `<button class="btn" ${manualCart.length===0?"disabled":""} onclick="registerManualOrder()">Registrar pedido completo</button>`;
 
@@ -887,7 +928,7 @@ function renderPlataformas(panel){
   } else {
     const sorted = [...STATE.manualOrders].sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
     html += sorted.map(o => {
-      const total = (o.items||[]).reduce((s,i)=>s+(i.price||0),0);
+      const total = (o.items||[]).reduce((s,i)=>s+(i.price||0),0) + (o.deliveryFee||0);
       return `<div class="order-card">
         <div class="order-card-top">
           <div><b>${o.customer}</b> <span class="badge platform">${o.platform}</span></div>
@@ -895,6 +936,7 @@ function renderPlataformas(panel){
         </div>
         <div class="item-list">
           ${(o.items||[]).map(i => `<div class="item-row"><span>${i.prodLabel} <span class="item-size">${i.sizeLabel}</span></span><span class="item-price">R$ ${(i.price||0).toFixed(2)}</span></div>`).join("")}
+          ${o.deliveryFee > 0 ? `<div class="item-row"><span>Taxa de entrega</span><span class="item-price">R$ ${o.deliveryFee.toFixed(2)}</span></div>` : ""}
         </div>
         <div class="order-card-total">Total: R$ ${total.toFixed(2)}</div>
       </div>`;
@@ -937,10 +979,12 @@ async function registerManualOrder(){
   const customer = manualFormState.customer.trim() || "Sem nome";
   const phone = manualFormState.phone.trim();
   const platform = manualFormState.platform;
+  const deliveryFee = manualFormState.hasDeliveryFee ? (manualFormState.deliveryFeeValue || 0) : 0;
   const record = {
     id: "man_" + Date.now() + "_" + Math.floor(Math.random()*1000),
     customer, phone, platform,
     items: manualCart.map(i => ({ ...i })),
+    deliveryFee,
     deliveryStatus: "feito",
     createdAt: Date.now(),
   };
@@ -950,7 +994,7 @@ async function registerManualOrder(){
     await pushRecord("pedidos_manuais", record);
   }
   manualCart = [];
-  manualFormState = { customer: "", phone: "", platform: PLATFORMS[0] };
+  manualFormState = { customer: "", phone: "", platform: PLATFORMS[0], hasDeliveryFee: false, deliveryFeeValue: 15 };
   await loadAll();
   renderMain();
 }
@@ -958,6 +1002,32 @@ async function registerManualOrder(){
 /* ============ TAB: Caixa ============ */
 function monthKey(ts){ const d = new Date(ts); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; }
 function monthLabel(key){ const [y,m] = key.split("-"); const names = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]; return `${names[parseInt(m)-1]}/${y}`; }
+
+async function fecharMes(mk, entradas, saidas, caixa){
+  if (!confirm(`Fechar ${monthLabel(mk)} definitivamente?\n\nEntradas: R$ ${entradas.toFixed(2)}\nSaídas: R$ ${saidas.toFixed(2)}\nCaixa: R$ ${caixa.toFixed(2)}\n\nEsse retrato fica salvo no histórico.`)) return;
+  const record = { month: mk, entradas, saidas, caixa, closedAt: Date.now() };
+  if (dbReady) {
+    await firebase.database().ref("fechamentos/" + mk).set(record);
+  } else {
+    const list = localGet("caseirinho_fechamentos").filter(f => f.month !== mk);
+    list.push(record);
+    localSet("caseirinho_fechamentos", list);
+  }
+  await loadAll();
+  renderMain();
+}
+
+async function reabrirMes(mk){
+  if (!confirm(`Reabrir ${monthLabel(mk)}? Isso remove o fechamento salvo, mas não apaga os lançamentos.`)) return;
+  if (dbReady) {
+    await firebase.database().ref("fechamentos/" + mk).remove();
+  } else {
+    const list = localGet("caseirinho_fechamentos").filter(f => f.month !== mk);
+    localSet("caseirinho_fechamentos", list);
+  }
+  await loadAll();
+  renderMain();
+}
 
 function renderCaixa(panel){
   let html = `<h2>Fechamento de caixa</h2><div class="subtitle">Entradas (pedidos do app + fora do app + repasses) menos saídas (insumos + despesas).</div>`;
@@ -997,20 +1067,29 @@ function renderCaixa(panel){
   } else {
     const sortedMonths = [...months].sort();
     sortedMonths.forEach(mk => {
+      const fechamento = STATE.fechamentos.find(f => f.month === mk);
+
       const appOrdersMonth = STATE.appOrders.filter(o=>monthKey(o.createdAt)===mk);
       const productEntradas = appOrdersMonth.reduce((s,o)=>s+(o.subtotal||0),0);
-      const shippingEntradas = appOrdersMonth.reduce((s,o)=>s+(o.shipping||0),0);
-      const manualEntradas = STATE.manualOrders.filter(o=>monthKey(o.createdAt)===mk).reduce((s,o)=>s+(o.price||0),0);
+      const manualOrdersMonth = STATE.manualOrders.filter(o=>monthKey(o.createdAt)===mk);
+      const manualProductEntradas = manualOrdersMonth.reduce((s,o)=>s + (o.items||[]).reduce((s2,i)=>s2+(i.price||0),0), 0);
+      const shippingEntradas = appOrdersMonth.reduce((s,o)=>s+(o.shipping||0),0) + manualOrdersMonth.reduce((s,o)=>s+(o.deliveryFee||0),0);
       const repasseEntradas = STATE.repasses.filter(r=>r.month===mk).reduce((s,r)=>s+(r.value||0),0);
       const insumoSaidas = STATE.insumoPurchases.filter(o=>monthKey(new Date(o.date).getTime())===mk).reduce((s,o)=>s+(o.cost||0),0);
       const despesasMonth = STATE.despesas.filter(o=>monthKey(new Date(o.date).getTime())===mk);
       const gasolinaSaidas = despesasMonth.filter(d => (d.desc||"").toLowerCase().includes("gasolina")).reduce((s,o)=>s+(o.value||0),0);
       const outrasDespesas = despesasMonth.reduce((s,o)=>s+(o.value||0),0) - gasolinaSaidas;
-      const entradas = productEntradas + shippingEntradas + manualEntradas + repasseEntradas;
+      const entradas = productEntradas + shippingEntradas + manualProductEntradas + repasseEntradas;
       const saidas = insumoSaidas + gasolinaSaidas + outrasDespesas;
       const caixa = entradas - saidas;
 
-      html += `<div class="card"><b>${monthLabel(mk)}</b>
+      html += `<div class="card"><div style="display:flex; justify-content:space-between; align-items:center;">
+          <b>${monthLabel(mk)}</b>
+          ${fechamento
+            ? `<span><span class="badge" style="background:var(--olive);">✓ Fechado em ${new Date(fechamento.closedAt).toLocaleDateString('pt-BR')}</span> <button class="btn small danger" onclick="reabrirMes('${mk}')">Reabrir</button></span>`
+            : `<button class="btn small" onclick="fecharMes('${mk}', ${entradas}, ${saidas}, ${caixa})">Fechar mês</button>`
+          }
+        </div>
         <div class="stat-row" style="margin-top:8px;">
           <div class="stat-box positive"><div class="label">Entradas</div><div class="value">R$ ${entradas.toFixed(2)}</div></div>
           <div class="stat-box negative"><div class="label">Saídas</div><div class="value">R$ ${saidas.toFixed(2)}</div></div>
@@ -1018,9 +1097,8 @@ function renderCaixa(panel){
         </div>
         <table style="margin-top:4px;">
           <tr><th>Detalhe</th><th>Valor</th></tr>
-          <tr><td>Vendas (produtos)</td><td>R$ ${productEntradas.toFixed(2)}</td></tr>
+          <tr><td>Vendas (produtos)</td><td>R$ ${(productEntradas+manualProductEntradas).toFixed(2)}</td></tr>
           <tr><td>Taxa de entrega recebida</td><td style="color:var(--olive); font-weight:600;">+ R$ ${shippingEntradas.toFixed(2)}</td></tr>
-          <tr><td>Pedidos por fora / plataformas</td><td>R$ ${manualEntradas.toFixed(2)}</td></tr>
           <tr><td>Repasses de plataforma</td><td>R$ ${repasseEntradas.toFixed(2)}</td></tr>
           <tr><td>Gasolina</td><td style="color:var(--red);">− R$ ${gasolinaSaidas.toFixed(2)}</td></tr>
           <tr><td>Insumos comprados</td><td style="color:var(--red);">− R$ ${insumoSaidas.toFixed(2)}</td></tr>
@@ -1030,6 +1108,18 @@ function renderCaixa(panel){
       </div>`;
     });
   }
+
+  html += `<h2 style="margin-top:26px;">Histórico de fechamentos</h2>`;
+  if (STATE.fechamentos.length === 0) {
+    html += `<div class="empty">Nenhum mês fechado ainda.</div>`;
+  } else {
+    const sortedFechamentos = [...STATE.fechamentos].sort((a,b) => a.month < b.month ? 1 : -1);
+    html += `<table><tr><th>Mês</th><th>Entradas</th><th>Saídas</th><th>Caixa</th></tr>
+      ${sortedFechamentos.map(f => `<tr><td>${monthLabel(f.month)}</td><td>R$ ${f.entradas.toFixed(2)}</td><td>R$ ${f.saidas.toFixed(2)}</td><td style="font-weight:700; color:${f.caixa>=0?'var(--olive)':'var(--red)'};">R$ ${f.caixa.toFixed(2)}</td></tr>`).join("")}
+    </table>
+    <div style="text-align:right; font-weight:700; margin-top:8px;">Total anual (meses fechados): R$ ${sortedFechamentos.reduce((s,f)=>s+f.caixa,0).toFixed(2)}</div>`;
+  }
+
   panel.innerHTML = html;
 }
 
