@@ -361,15 +361,16 @@ async function loadAll(){
   }
 }
 
-async function updateOrderStatus(source, orderId, newStatus){
+async function toggleOrderFlag(source, orderId, field, currentValue){
+  const newValue = !currentValue;
   if (dbReady) {
     const node = source === "app" ? "pedidos" : "pedidos_manuais";
-    await firebase.database().ref(`${node}/${orderId}`).update({ deliveryStatus: newStatus });
+    await firebase.database().ref(`${node}/${orderId}`).update({ [field]: newValue });
   } else {
     const key = source === "app" ? "caseirinho_pedidos_local" : "caseirinho_pedidos_manuais";
     const list = localGet(key);
     const idx = list.findIndex(o => o.id === orderId);
-    if (idx >= 0) { list[idx].deliveryStatus = newStatus; localSet(key, list); }
+    if (idx >= 0) { list[idx][field] = newValue; localSet(key, list); }
   }
   await loadAll();
   renderMain();
@@ -454,8 +455,7 @@ function allOrderItems(){
 }
 
 /* ============ TAB: Pedidos ============ */
-const DELIVERY_STAGES = [
-  { key: "feito", label: "Feito" },
+const STATUS_TOGGLES = [
   { key: "produzido", label: "Produzido" },
   { key: "pago", label: "Pago" },
   { key: "entregue", label: "Entregue" },
@@ -494,12 +494,10 @@ function renderPedidos(panel){
       </div>`;
 
     group.orders.forEach(o => {
-      const status = o.deliveryStatus || "feito";
-      const currentIdx = DELIVERY_STAGES.findIndex(s => s.key === status);
       const pm = o.paymentMethod;
       const pmBadge = pm === "pix" ? '<span class="badge" style="background:var(--gold); color:var(--brown);">Pix</span>' : pm === "card" ? '<span class="badge" style="background:var(--brown);">Cartão na entrega</span>' : "";
       const originBadge = o.source === "app" ? '<span class="badge app">App</span>' : `<span class="badge platform">${o.platform || "Fora"}</span>`;
-      const orderTotal = (o.items||[]).reduce((s,i)=>s+(i.price||0),0);
+      const orderTotal = (o.items||[]).reduce((s,i)=>s+(i.price||0),0) + (o.deliveryFee||0);
 
       html += `<div class="order-card">
         <div class="order-card-top">
@@ -508,14 +506,17 @@ function renderPedidos(panel){
         </div>
         <div class="item-list">
           ${(o.items||[]).map(i => `<div class="item-row"><span>${i.prodLabel} <span class="item-size">${i.sizeLabel}</span></span><span class="item-price">R$ ${(i.price||0).toFixed(2)}</span></div>`).join("")}
+          ${o.deliveryFee > 0 ? `<div class="item-row"><span>Taxa de entrega</span><span class="item-price">R$ ${o.deliveryFee.toFixed(2)}</span></div>` : ""}
         </div>
         <div class="order-card-total">Total: R$ ${orderTotal.toFixed(2)}</div>
         <div class="stepper">
-          ${DELIVERY_STAGES.map((s, i) => `
-            <button class="step-btn ${i < currentIdx ? 'done' : ''} ${i === currentIdx ? 'current' : ''}"
-              onclick="updateOrderStatus('${o.source}','${o.id}','${s.key}')">${s.label}</button>
-          `).join("")}
+          ${STATUS_TOGGLES.map(s => {
+            const isOn = !!o[s.key];
+            return `<button class="step-btn ${isOn ? 'done' : ''}" onclick="toggleOrderFlag('${o.source}','${o.id}','${s.key}',${isOn})">${isOn ? '✓ ' : ''}${s.label}</button>`;
+          }).join("")}
         </div>
+        ${!o.pago && (o.source === "app" || o.platform === PLATFORMS[0]) ? `<div class="config-note" style="margin-top:8px; margin-bottom:0;">Esse valor só entra no Caixa depois que marcar como "Pago".</div>` : ""}
+        ${o.source === "manual" && o.platform && o.platform !== PLATFORMS[0] ? `<div class="config-note" style="margin-top:8px; margin-bottom:0;">Pedido de plataforma: o valor não entra direto no Caixa — ele entra quando você registrar o <b>Repasse</b> dessa plataforma no fim do mês.</div>` : ""}
       </div>`;
     });
 
@@ -1001,7 +1002,9 @@ async function registerManualOrder(){
     customer, phone, platform,
     items: manualCart.map(i => ({ ...i })),
     deliveryFee,
-    deliveryStatus: "feito",
+    produzido: false,
+    pago: false,
+    entregue: false,
     createdAt: Date.now(),
   };
   if (dbReady) {
@@ -1104,9 +1107,9 @@ function renderCaixa(panel){
     sortedMonths.forEach(mk => {
       const fechamento = STATE.fechamentos.find(f => f.month === mk);
 
-      const appOrdersMonth = STATE.appOrders.filter(o=>monthKey(o.createdAt)===mk);
+      const appOrdersMonth = STATE.appOrders.filter(o=>monthKey(o.createdAt)===mk && o.pago);
       const productEntradas = appOrdersMonth.reduce((s,o)=>s+(o.subtotal||0),0);
-      const manualOrdersMonth = STATE.manualOrders.filter(o=>monthKey(o.createdAt)===mk);
+      const manualOrdersMonth = STATE.manualOrders.filter(o=>monthKey(o.createdAt)===mk && o.pago && o.platform === PLATFORMS[0]);
       const manualProductEntradas = manualOrdersMonth.reduce((s,o)=>s + (o.items||[]).reduce((s2,i)=>s2+(i.price||0),0), 0);
       const shippingEntradas = appOrdersMonth.reduce((s,o)=>s+(o.shipping||0),0) + manualOrdersMonth.reduce((s,o)=>s+(o.deliveryFee||0),0);
       const repasseEntradas = STATE.repasses.filter(r=>r.month===mk).reduce((s,r)=>s+(r.value||0),0);

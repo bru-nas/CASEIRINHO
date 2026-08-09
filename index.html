@@ -435,7 +435,9 @@ function finalizarPedido(){
     total: t.total,
     paymentMethod: paymentMethod,
     status: paymentMethod === "pix" ? "aguardando_pagamento" : "pagamento_na_entrega",
-    deliveryStatus: "feito",
+    produzido: false,
+    pago: false,
+    entregue: false,
     createdAt: Date.now(),
     source: "app"
   };
