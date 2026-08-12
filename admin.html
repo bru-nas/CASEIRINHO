@@ -318,7 +318,7 @@ const PRODUCTION_CHAINS = [
 const WILDCARD_PRODUCT = "pure"; // pode ser combinado em qualquer lote com espaço sobrando
 
 /* Capacidade de produção: peso total por vez (mistura tamanhos diferentes) */
-const BATCH_CAPACITY_GRAMS = 1100;
+const BATCH_CAPACITY_GRAMS = 1400;
 const SIZE_GRAMS = { "300": 300, "500": 500, "1000": 1000 };
 
 /* ---------- Helpers ---------- */
@@ -507,12 +507,22 @@ function renderPedidos(panel){
     groups[key].orders.push(o);
   });
 
-  Object.values(groups).forEach(group => {
-    // pedidos já entregues vão pro final da lista
+  const groupsArray = Object.values(groups).map(group => {
     group.orders.sort((a, b) => {
       if (!!a.entregue === !!b.entregue) return (b.createdAt||0) - (a.createdAt||0);
       return a.entregue ? 1 : -1;
     });
+    group.hasPending = group.orders.some(o => !o.entregue);
+    group.mostRecent = Math.max(...group.orders.map(o => o.createdAt||0));
+    return group;
+  });
+  // grupos com pedido pendente primeiro; grupos 100% entregues vão pro final
+  groupsArray.sort((a, b) => {
+    if (a.hasPending !== b.hasPending) return a.hasPending ? -1 : 1;
+    return b.mostRecent - a.mostRecent;
+  });
+
+  groupsArray.forEach(group => {
     const groupTotal = group.orders.reduce((s,o)=> s + (o.items||[]).reduce((s2,i)=>s2+(i.price||0),0), 0);
     html += `<div class="customer-group">
       <div class="customer-group-header">
@@ -587,6 +597,7 @@ function computeInsumoNeeds(items){
       if (prodKey === "toque_caseiro") {
         add("pimenta_malagueta", recipe.transform.pimenta_malagueta[sizeKey]);
         add("fumaca_po", recipe.transform.fumaca_po[sizeKey]);
+        add("paprica_picante", recipe.transform.paprica_picante[sizeKey]);
       }
       potes[sizeKey] = (potes[sizeKey]||0) + 1;
     } else if (lineKey === "pure") {
@@ -605,51 +616,47 @@ function computeInsumoNeeds(items){
 }
 
 /* ============ TAB: Lista de Compras ============ */
-function getComprasChecklist() {
-  try { return JSON.parse(localStorage.getItem("caseirinho_compras_checklist") || "{}"); } catch(e) { return {}; }
+function comprasJaFeitas(){
+  const totals = {};
+  STATE.insumoPurchases.forEach(p => {
+    if (!p.insumoKey) return; // itens "extra" não têm correspondência com a ficha técnica
+    totals[p.insumoKey] = (totals[p.insumoKey] || 0) + (p.qty || 0);
+  });
+  return totals;
 }
-function toggleCompraChecklist(key) {
-  const checklist = getComprasChecklist();
-  checklist[key] = !checklist[key];
-  localStorage.setItem("caseirinho_compras_checklist", JSON.stringify(checklist));
-  renderMain();
+
+function renderCompraRow(k, necessario){
+  const comprado = comprasJaFeitas()[k] || 0;
+  const falta = Math.max(0, necessario - comprado);
+  const unidade = k.includes("limao") ? "un" : "g";
+  const completo = falta <= 0;
+  return `<div class="compra-row ${completo?'checked':''}">
+    <span style="font-size:16px;">${completo ? '✅' : '⚠️'}</span>
+    <span class="compra-nome">${INSUMO_LABELS[k]||k}</span>
+    <span class="compra-qtd">${completo ? `comprado (${comprado.toFixed(2)}${unidade})` : `falta ${falta.toFixed(2)}${unidade}`}</span>
+  </div>`;
 }
 
 function renderCompras(panel){
   const items = allOrderItems().filter(i => !i.produzido);
   const { needs, potes, moedorCount } = computeInsumoNeeds(items);
-  const checklist = getComprasChecklist();
-  let html = `<h2>Lista de compras</h2><div class="subtitle">Total de insumos necessários pra atender os pedidos ainda não produzidos (app + fora + plataformas). Marque o que já comprou.</div>`;
-  const insumoKeys = Object.keys(needs);
+  let html = `<h2>Lista de compras</h2><div class="subtitle">Compara o que ainda é necessário com o que você já registrou de compra na aba Caixa. Atualiza sozinho.</div>`;
+  const insumoKeys = Object.keys(needs).filter(k => k !== "limao_unid");
   if (insumoKeys.length === 0) {
     html += `<div class="empty">Nenhum pedido pra calcular ainda.</div>`;
   } else {
-    html += `<div class="compra-list">` + insumoKeys.map(k => {
-      const checked = !!checklist["insumo_"+k];
-      const qtd = needs[k].toFixed(2) + " " + (k.includes("limao")?"un":"g");
-      return `<label class="compra-row ${checked?'checked':''}">
-        <input type="checkbox" ${checked?'checked':''} onchange="toggleCompraChecklist('insumo_${k}')">
-        <span class="compra-nome">${INSUMO_LABELS[k]||k}</span>
-        <span class="compra-qtd">${qtd}</span>
-      </label>`;
-    }).join("") + `</div>`;
+    html += `<div class="compra-list">` + insumoKeys.map(k => renderCompraRow(k, needs[k])).join("") + `</div>`;
   }
-  html += `<h2 style="margin-top:20px;">Embalagens e potes</h2>`;
+  html += `<h2 style="margin-top:20px;">Embalagens e itens por unidade</h2>`;
   const embalagensItems = [
     { key: "pote_300", label: "Pote de 300g", qtd: potes["300"]||0 },
     { key: "pote_500", label: "Pote de 500g", qtd: potes["500"]||0 },
     { key: "pote_1000", label: "Pote de 1kg", qtd: potes["1000"]||0 },
     { key: "moedor", label: "Moedor (Saladete com moedor)", qtd: moedorCount, extra: ` — R$ ${(moedorCount*MOEDOR_COST).toFixed(2)}` },
+    { key: "limao", label: "Limão", qtd: (needs["limao_unid"]||0).toFixed(0) + " unidades" },
   ];
-  html += `<div class="compra-list">` + embalagensItems.map(it => {
-    const checked = !!checklist["embalagem_"+it.key];
-    return `<label class="compra-row ${checked?'checked':''}">
-      <input type="checkbox" ${checked?'checked':''} onchange="toggleCompraChecklist('embalagem_${it.key}')">
-      <span class="compra-nome">${it.label}</span>
-      <span class="compra-qtd">${it.qtd}${it.extra||""}</span>
-    </label>`;
-  }).join("") + `</div>`;
-  html += `<div class="config-note">O custo dos potes não entra automático porque varia conforme o lote de compra — lance o valor pago na aba Caixa quando comprar.</div>`;
+  html += `<div class="compra-list">` + embalagensItems.map(it => `<div class="compra-row"><span class="compra-nome">${it.label}</span><span class="compra-qtd">${it.qtd}${it.extra||""}</span></div>`).join("") + `</div>`;
+  html += `<div class="config-note">Potes, moedor e limão não têm comparação automática de "já comprado" — são informativos. O limão é usado em unidades mas comprado em peso, então lance o valor gasto na aba Caixa como "Outro/Extra".</div>`;
   panel.innerHTML = html;
 }
 
@@ -731,15 +738,94 @@ function fmtQty(v, insumo){
   return `${v.toFixed(v < 10 ? 2 : 1)}${unit}`;
 }
 
+let producaoSelecionados = null; // Set de order ids marcados pra produzir agora (null = ainda não inicializado)
+
+function toggleProducaoSelecionado(orderId){
+  if (producaoSelecionados.has(orderId)) producaoSelecionados.delete(orderId);
+  else producaoSelecionados.add(orderId);
+  renderMain();
+}
+
+function selecionarTodosProducao(marcarTodos){
+  const allOrders = [
+    ...STATE.appOrders.map(o => ({ ...o, source: "app" })),
+    ...STATE.manualOrders.map(o => ({ ...o, source: "manual" })),
+  ].filter(o => !o.produzido && (o.items||[]).some(i => i.lineKey === "dia_a_dia" || i.lineKey === "pure"));
+  producaoSelecionados = marcarTodos ? new Set(allOrders.map(o => o.id)) : new Set();
+  renderMain();
+}
+
+async function marcarSelecionadosComoProduzidos(){
+  if (!confirm("Marcar todos os pedidos selecionados como Produzido?")) return;
+  const allOrders = [
+    ...STATE.appOrders.map(o => ({ ...o, source: "app" })),
+    ...STATE.manualOrders.map(o => ({ ...o, source: "manual" })),
+  ];
+  for (const o of allOrders) {
+    if (producaoSelecionados.has(o.id)) {
+      await toggleOrderFlag(o.source, o.id, "produzido", false);
+    }
+  }
+  producaoSelecionados = null;
+  await loadAll();
+  renderMain();
+}
+
 function renderProducao(panel){
   const recipe = getRecipe();
-  const items = allOrderItems().filter(i => (i.lineKey === "dia_a_dia" || i.lineKey === "pure") && !i.produzido);
-  const counts = {};
-  items.forEach(i => { const key = `${i.prodKey}|${i.sizeKey}`; counts[key] = (counts[key]||0) + 1; });
 
-  let html = `<h2>Produção</h2><div class="subtitle">Só mostra o que ainda não foi marcado como Produzido. Capacidade: até 1.100g por vez, pode misturar tamanhos diferentes (ex: 2 de 300g + 1 de 500g = 1.100g). Quantidade exata de insumo pra bater e o que adicionar em cada etapa.</div>`;
-  if (Object.keys(counts).length === 0) {
+  // pedidos pendentes (não produzidos) que têm algo de Dia a Dia ou Pure
+  const allOrders = [
+    ...STATE.appOrders.map(o => ({ ...o, source: "app" })),
+    ...STATE.manualOrders.map(o => ({ ...o, source: "manual" })),
+  ].filter(o => !o.produzido && (o.items||[]).some(i => i.lineKey === "dia_a_dia" || i.lineKey === "pure"))
+   .sort((a,b) => (a.createdAt||0) - (b.createdAt||0));
+
+  // inicializa seleção (todos marcados) só na primeira vez que a aba abre
+  if (producaoSelecionados === null) {
+    producaoSelecionados = new Set(allOrders.map(o => o.id));
+  }
+
+  let html = `<h2>Produção</h2><div class="subtitle">Escolha quais pedidos entram nesta leva de produção. Capacidade: até 1.400g por vez, pode misturar tamanhos (ex: 2 de 300g + 1 de 500g = 1.100g, ainda cabe). Quantidade exata de insumo pra bater e o que adicionar em cada etapa.</div>`;
+
+  if (allOrders.length === 0) {
     html += `<div class="empty">Nenhum pedido de Dia a Dia ou Pure pra produzir ainda.</div>`;
+    panel.innerHTML = html;
+    return;
+  }
+
+  html += `<div class="card" style="margin-bottom:16px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+      <b>Pedidos pendentes — escolha o que produzir agora</b>
+      <span>
+        <button class="btn small secondary" onclick="selecionarTodosProducao(true)">Marcar todos</button>
+        <button class="btn small" onclick="selecionarTodosProducao(false)">Desmarcar todos</button>
+      </span>
+    </div>
+    ${allOrders.map(o => {
+      const itemsDiaAPure = (o.items||[]).filter(i => i.lineKey === "dia_a_dia" || i.lineKey === "pure");
+      const resumo = itemsDiaAPure.map(i => `${i.prodLabel} (${i.sizeLabel})`).join(", ");
+      const checked = producaoSelecionados.has(o.id);
+      return `<label class="compra-row" style="cursor:pointer;">
+        <input type="checkbox" ${checked?'checked':''} onchange="toggleProducaoSelecionado('${o.id}')">
+        <span class="compra-nome"><b>${o.customer||"Sem nome"}</b> — ${resumo}</span>
+      </label>`;
+    }).join("")}
+  </div>`;
+
+  // conta só os itens dos pedidos selecionados
+  const counts = {};
+  allOrders.forEach(o => {
+    if (!producaoSelecionados.has(o.id)) return;
+    (o.items||[]).forEach(i => {
+      if (i.lineKey !== "dia_a_dia" && i.lineKey !== "pure") return;
+      const key = `${i.prodKey}|${i.sizeKey}`;
+      counts[key] = (counts[key]||0) + 1;
+    });
+  });
+
+  if (Object.keys(counts).length === 0) {
+    html += `<div class="empty">Nenhum pedido selecionado pra essa leva de produção.</div>`;
     panel.innerHTML = html;
     return;
   }
@@ -758,7 +844,7 @@ function renderProducao(panel){
 
   if (tradTotalUnits > 0) {
     const numBatches = Math.ceil(tradTotalWeight / BATCH_CAPACITY_GRAMS);
-    html += `<div class="batch-box"><div class="title">🧄 Família Tradicional — ${tradTotalUnits} unidade(s), ${tradTotalWeight}g no total, ~${numBatches} vez(es) de produção (capacidade 1.100g cada)</div>`;
+    html += `<div class="batch-box"><div class="title">🧄 Família Tradicional — ${tradTotalUnits} unidade(s), ${tradTotalWeight}g no total, ~${numBatches} vez(es) de produção (capacidade 1.400g cada)</div>`;
 
     const base = recipe.dia_a_dia_base;
     const alhoRatio = base.alho["300"] / 300;
@@ -843,7 +929,7 @@ function renderProducao(panel){
 
   if (cvTotalUnits > 0) {
     const numBatches = Math.ceil(cvTotalWeight / BATCH_CAPACITY_GRAMS);
-    html += `<div class="batch-box"><div class="title">🌿 Família Cheiro Verde — ${cvTotalUnits} unidade(s), ${cvTotalWeight}g no total, ~${numBatches} vez(es) de produção (capacidade 1.100g cada)</div>`;
+    html += `<div class="batch-box"><div class="title">🌿 Família Cheiro Verde — ${cvTotalUnits} unidade(s), ${cvTotalWeight}g no total, ~${numBatches} vez(es) de produção (capacidade 1.400g cada)</div>`;
 
     const base = recipe.dia_a_dia_base;
     const alhoRatio = base.alho["300"] / 300;
@@ -917,11 +1003,13 @@ function renderProducao(panel){
   if (pureSobraUnidades > 0) {
     const pureSobraWeight = pureSobra300*300 + pureSobra500*500;
     const numBatches = Math.ceil(pureSobraWeight / BATCH_CAPACITY_GRAMS);
-    html += `<div class="batch-box"><div class="title">🫙 Pure — ${pureSobraUnidades} unidade(s), ${pureSobraWeight}g, ~${numBatches} vez(es) de produção (capacidade 1.100g cada)</div>`;
+    html += `<div class="batch-box"><div class="title">🫙 Pure — ${pureSobraUnidades} unidade(s), ${pureSobraWeight}g, ~${numBatches} vez(es) de produção (capacidade 1.400g cada)</div>`;
     if (pureSobra300 > 0) { const a = recipe.pure.alho["300"]*pureSobra300; html += `<div class="chain-step">— 300g (${pureSobra300} unidade(s)): bata ${fmtQty(a)} de Alho puro, depois misture o azeite.</div>`; }
     if (pureSobra500 > 0) { const a = recipe.pure.alho["500"]*pureSobra500; html += `<div class="chain-step">— 500g (${pureSobra500} unidade(s)): bata ${fmtQty(a)} de Alho puro, depois misture o azeite.</div>`; }
     html += `</div>`;
   }
+
+  html += `<button class="btn" style="width:100%; margin-top:10px;" onclick="marcarSelecionadosComoProduzidos()">✓ Marcar pedidos selecionados como Produzido</button>`;
 
   panel.innerHTML = html;
 }
@@ -978,8 +1066,13 @@ function onCepInputAdmin(){
         msg = "Senador Canedo/GO — Taxa fixa: R$ 10,00";
       } else {
         const km = haversineKmAdmin(adminOrigemCoords.lat, adminOrigemCoords.lng, destino.lat, destino.lng);
-        preco = faixaPrecoAdmin(km);
-        msg = "Distância: ~" + km.toFixed(1) + "km — Taxa: R$ " + preco.toFixed(2);
+        if (km <= 3) {
+          preco = 0;
+          msg = "Distância: ~" + km.toFixed(1) + "km — Grátis (até 3km)!";
+        } else {
+          preco = faixaPrecoAdmin(km);
+          msg = "Distância: ~" + km.toFixed(1) + "km — Taxa: R$ " + preco.toFixed(2);
+        }
       }
       adminFreteCalculado = preco;
       manualFormState.hasDeliveryFee = true;
@@ -1153,27 +1246,25 @@ async function reabrirMes(mk){
 
 function renderCaixa(panel){
   const { needs } = computeInsumoNeeds(allOrderItems().filter(i => !i.produzido));
-  const checklist = getComprasChecklist();
-  const insumoKeys = Object.keys(needs);
+  const insumoKeys = Object.keys(needs).filter(k => k !== "limao_unid");
 
   let html = `<h2>Fechamento de caixa</h2><div class="subtitle">Entradas (pedidos do app + fora do app + repasses) menos saídas (insumos + despesas).</div>`;
 
   html += `<div class="caixa-compras-grid">
     <div>
       <b>Lista de compras (pendente)</b>
-      ${insumoKeys.length === 0 ? '<div class="empty" style="padding:12px 0;">Nada pendente.</div>' : `<div class="compra-list" style="margin-top:8px;">${insumoKeys.map(k => {
-        const checked = !!checklist["insumo_"+k];
-        return `<label class="compra-row ${checked?'checked':''}">
-          <input type="checkbox" ${checked?'checked':''} onchange="toggleCompraChecklist('insumo_${k}')">
-          <span class="compra-nome">${INSUMO_LABELS[k]||k}</span>
-          <span class="compra-qtd">${needs[k].toFixed(2)} ${k.includes("limao")?"un":"g"}</span>
-        </label>`;
-      }).join("")}</div>`}
+      ${insumoKeys.length === 0 ? '<div class="empty" style="padding:12px 0;">Nada pendente.</div>' : `<div class="compra-list" style="margin-top:8px;">${insumoKeys.map(k => renderCompraRow(k, needs[k])).join("")}</div>`}
     </div>
     <div>
       <b>Registrar compra de insumo</b>
       <div class="form-grid" style="grid-template-columns:1fr;">
-        <div><label>Insumo</label><input type="text" id="c_insumo" placeholder="Ex: Alho"></div>
+        <div><label>Insumo</label>
+          <select id="c_insumo_select" onchange="onInsumoSelectChange()">
+            ${Object.entries(INSUMO_LABELS).filter(([k]) => k !== "limao_unid").map(([k,label]) => `<option value="${k}">${label}</option>`).join("")}
+            <option value="__outro__">Outro / Extra (embalagem, gás, etc)</option>
+          </select>
+          <input type="text" id="c_insumo_extra" placeholder="Digite o nome do item" style="display:none; margin-top:6px;">
+        </div>
         <div><label>Valor unitário (R$ por g/un)</label><input type="number" step="0.0001" id="c_unitprice" placeholder="Ex: 0.025" oninput="atualizarCustoTotal()"></div>
         <div><label>Quantidade</label><input type="number" step="0.1" id="c_qty" placeholder="Ex: 1000 (g)" oninput="atualizarCustoTotal()"></div>
         <div><label>Custo total (calculado)</label><input type="text" id="c_cost_preview" value="R$ 0.00" disabled style="background:#eee;"></div>
@@ -1292,14 +1383,22 @@ function atualizarCustoTotal(){
   document.getElementById("c_cost_preview").value = "R$ " + (unitPrice * qty).toFixed(2);
 }
 
+function onInsumoSelectChange(){
+  const val = document.getElementById("c_insumo_select").value;
+  document.getElementById("c_insumo_extra").style.display = val === "__outro__" ? "block" : "none";
+}
+
 async function addInsumoPurchase(){
-  const insumo = document.getElementById("c_insumo").value.trim();
+  const selectVal = document.getElementById("c_insumo_select").value;
+  const isExtra = selectVal === "__outro__";
+  const insumo = isExtra ? document.getElementById("c_insumo_extra").value.trim() : INSUMO_LABELS[selectVal];
+  const insumoKey = isExtra ? null : selectVal;
   const unitPrice = parseFloat(document.getElementById("c_unitprice").value) || 0;
   const qty = parseFloat(document.getElementById("c_qty").value) || 0;
   const cost = unitPrice * qty;
   const date = document.getElementById("c_date").value;
   if (!insumo) return alert("Informe o insumo.");
-  await pushRecord("compras_insumos", { insumo, unitPrice, qty, cost, date });
+  await pushRecord("compras_insumos", { insumo, insumoKey, unitPrice, qty, cost, date });
   await loadAll(); renderMain();
 }
 async function addRepasse(){

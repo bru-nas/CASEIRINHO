@@ -386,7 +386,8 @@ function calcularTotal(){
   var subtotal = 0;
   for (var i = 0; i < cart.length; i++) subtotal += cart[i].price;
   var shipping = 0;
-  if (subtotal > 0 && subtotal < FREE_SHIPPING_THRESHOLD) {
+  var gratisPorDistancia = freteCalculado && freteCalculado.km !== null && freteCalculado.km <= 3;
+  if (subtotal > 0 && subtotal < FREE_SHIPPING_THRESHOLD && !gratisPorDistancia) {
     shipping = freteCalculado ? freteCalculado.price : SHIPPING_FEE;
   }
   var preCard = subtotal + shipping;
@@ -448,7 +449,11 @@ function onCepInput(){
         var km = haversineKm(origemCoords.lat, origemCoords.lng, destino.lat, destino.lng);
         var preco = faixaPreco(km);
         freteCalculado = { km: km, price: preco };
-        statusEl.textContent = "Distância: ~" + km.toFixed(1) + "km — Taxa de entrega: R$ " + preco.toFixed(2);
+        if (km <= 3) {
+          statusEl.textContent = "Distância: ~" + km.toFixed(1) + "km — Taxa de entrega: Grátis!";
+        } else {
+          statusEl.textContent = "Distância: ~" + km.toFixed(1) + "km — Taxa de entrega: R$ " + preco.toFixed(2);
+        }
         statusEl.style.color = "var(--olive)";
       }
     } catch(e) {
