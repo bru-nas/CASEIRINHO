@@ -225,22 +225,22 @@ const RECIPE_DEFAULT = {
   // Linha Dia a Dia — Alho e Sal têm quantidade própria por produto final (pra caber no pote),
   // mas continuam batendo tudo junto na produção (soma as quantidades de cada um antes de bater).
   dia_a_dia_alho_sal: {
-    tradicional:          { alho: { "300": 112, "500": 186.67, "1000": 373.33 }, sal: { "300": 128, "500": 213.33, "1000": 426.67 } },
-    tradicional_picante:  { alho: { "300": 130.67, "500": 217.78, "1000": 435.56 }, sal: { "300": 149.33, "500": 248.88, "1000": 497.77 } },
-    toque_baiano:         { alho: { "300": 40,  "500": 66.67,  "1000": 133.33 }, sal: { "300": 45,  "500": 75.0,   "1000": 150.0  } },
-    toque_caipira:        { alho: { "300": 98,  "500": 163.33, "1000": 326.67 }, sal: { "300": 112, "500": 186.67, "1000": 373.33 } },
-    cheiro_verde:          { alho: { "300": 96,  "500": 160.0,  "1000": 320.0  }, sal: { "300": 144, "500": 240.0,  "1000": 480.0  } },
-    cheiro_verde_picante:  { alho: { "300": 112, "500": 186.67, "1000": 373.33 }, sal: { "300": 168, "500": 280.0, "1000": 560.0 } },
-    toque_caseiro:         { alho: { "300": 88,  "500": 146.67, "1000": 293.33 }, sal: { "300": 132, "500": 220.0,  "1000": 440.0  } },
+    tradicional:          { alho: { "300": 112, "500": 186, "1000": 373 }, sal: { "300": 128, "500": 213, "1000": 426 } },
+    tradicional_picante:  { alho: { "300": 131, "500": 217, "1000": 435 }, sal: { "300": 149, "500": 249, "1000": 497 } },
+    toque_baiano:         { alho: { "300": 40,  "500": 126, "1000": 253 }, sal: { "300": 45,  "500": 145, "1000": 289 } },
+    toque_caipira:        { alho: { "300": 98,  "500": 179, "1000": 357 }, sal: { "300": 112, "500": 204, "1000": 409 } },
+    cheiro_verde:          { alho: { "300": 96,  "500": 160, "1000": 320 }, sal: { "300": 144, "500": 239, "1000": 479 } },
+    cheiro_verde_picante:  { alho: { "300": 112, "500": 186, "1000": 373 }, sal: { "300": 168, "500": 280, "1000": 559 } },
+    toque_caseiro:         { alho: { "300": 88,  "500": 146, "1000": 293 }, sal: { "300": 132, "500": 220, "1000": 439 } },
   },
   dia_a_dia_base: {
-    cebola:          { "300": 50,   "500": 83.33,  "1000": 166.67 },
-    pimenta_cheiro:  { "300": 10,   "500": 16.67,  "1000": 33.33 },
+    cebola:          { "300": 50,   "500": 84,  "1000": 167 },
+    pimenta_cheiro:  { "300": 10,   "500": 17,  "1000": 34 },
   },
   // adicional só nos produtos "cheiro verde" — comprado em maço (unidade), não quebra
   cheiro_verde_extra: {
-    cebolinha_maco: { "300": 0.25, "500": 0.4167, "1000": 0.8333 },
-    coentro_maco:   { "300": 0.25, "500": 0.4167, "1000": 0.8333 },
+    cebolinha_maco: { "300": 0.25, "500": 0.42, "1000": 0.83 },
+    coentro_maco:   { "300": 0.25, "500": 0.42, "1000": 0.83 },
   },
   // transformações (adicionados sobre a base ao "evoluir" o produto)
   transform: {
@@ -256,7 +256,7 @@ const RECIPE_DEFAULT = {
   },
   // Pure — só alho
   pure: {
-    alho: { "300": 230, "500": 383.33 },
+    alho: { "300": 230, "500": 384 },
   },
   // Saladete — por unidade (mesma receita com ou sem moedor)
   saladete: {
@@ -392,6 +392,8 @@ async function loadAll(){
     STATE.despesas = Object.entries(de.val() || {}).map(([id, data]) => ({ id, ...data }));
     const fe = await firebase.database().ref("fechamentos").once("value");
     STATE.fechamentos = Object.values(fe.val() || {});
+    const ck = await firebase.database().ref("compras_reset_checkpoint").once("value");
+    STATE.comprasResetCheckpoint = ck.val() || null;
   } else {
     STATE.appOrders = localGet("caseirinho_pedidos_local");
     STATE.manualOrders = localGet("caseirinho_pedidos_manuais");
@@ -399,6 +401,7 @@ async function loadAll(){
     STATE.repasses = localGet("caseirinho_repasses");
     STATE.despesas = localGet("caseirinho_despesas");
     STATE.fechamentos = localGet("caseirinho_fechamentos");
+    STATE.comprasResetCheckpoint = localStorage.getItem("caseirinho_compras_reset_checkpoint") || null;
   }
 }
 
@@ -457,6 +460,19 @@ async function deleteRecord(node, id){
   }
   await loadAll();
   renderMain();
+}
+
+// Zera a lista de compras de insumo quando não sobra nenhum pedido pendente de produção,
+// SEM apagar o histórico de compras (o Caixa continua mostrando os gastos reais do mês).
+async function checkAndResetComprasIfAllProduced(){
+  if (pendingProducaoItems().length > 0) return;
+  const now = new Date().toISOString();
+  if (dbReady) {
+    await firebase.database().ref("compras_reset_checkpoint").set(now);
+  } else {
+    localStorage.setItem("caseirinho_compras_reset_checkpoint", now);
+  }
+  STATE.comprasResetCheckpoint = now;
 }
 
 /* ============ Tabs ============ */
@@ -518,6 +534,7 @@ async function setItemProduzido(source, orderId, itemIndex, value){
 async function toggleItemProduzido(source, orderId, itemIndex, currentValue){
   await setItemProduzido(source, orderId, itemIndex, !currentValue);
   await loadAll();
+  await checkAndResetComprasIfAllProduced();
   renderMain();
 }
 
@@ -675,8 +692,10 @@ function computeInsumoNeeds(items){
 /* ============ TAB: Lista de Compras ============ */
 function comprasJaFeitas(){
   const totals = {};
+  const checkpoint = STATE.comprasResetCheckpoint ? new Date(STATE.comprasResetCheckpoint).getTime() : 0;
   STATE.insumoPurchases.forEach(p => {
     if (!p.insumoKey) return; // itens "extra" não têm correspondência com a ficha técnica
+    if (p.date && new Date(p.date).getTime() < checkpoint) return; // compra já "zerada" — não conta mais na lista de compras (mas continua no Caixa)
     totals[p.insumoKey] = (totals[p.insumoKey] || 0) + (p.qty || 0);
   });
   return totals;
@@ -916,6 +935,7 @@ async function marcarSelecionadosComoProduzidos(){
   producaoSelecionados = null;
   producaoTiposSelecionados = null;
   await loadAll();
+  await checkAndResetComprasIfAllProduced();
   renderMain();
 }
 
