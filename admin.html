@@ -221,9 +221,10 @@ const RECIPE_DEFAULT = {
     cebola:          { "300": 0.05,   "500": 0.0833,  "1000": 0.1667 },
     pimenta_cheiro:  { "300": 0.01,   "500": 0.0167,  "1000": 0.0333 },
   },
-  // adicional só nos produtos "cheiro verde"
+  // adicional só nos produtos "cheiro verde" — comprado em maço (unidade), não quebra
   cheiro_verde_extra: {
-    cheiro_verde_folha: { "300": 0.07, "500": 0.1167, "1000": 0.2333 },
+    cebolinha_maco: { "300": 0.25, "500": 0.4167, "1000": 0.8333 },
+    coentro_maco:   { "300": 0.25, "500": 0.4167, "1000": 0.8333 },
   },
   // transformações (adicionados sobre a base ao "evoluir" o produto)
   transform: {
@@ -272,7 +273,8 @@ const INSUMO_LABELS = {
   sal: "Sal",
   cebola: "Cebola",
   pimenta_cheiro: "Pimenta de Cheiro",
-  cheiro_verde_folha: "Cheiro Verde (folha)",
+  cebolinha_maco: "Cebolinha (maço)",
+  coentro_maco: "Coentro (maço)",
   pimenta_malagueta: "Pimenta Malagueta",
   acafrao: "Açafrão",
   mix_pimentas_aromat: "Mix de Pimentas Aromáticas",
@@ -320,6 +322,7 @@ const WILDCARD_PRODUCT = "pure"; // pode ser combinado em qualquer lote com espa
 /* Capacidade de produção: peso total por vez (mistura tamanhos diferentes) */
 const BATCH_CAPACITY_GRAMS = 1400;
 const SIZE_GRAMS = { "300": 300, "500": 500, "1000": 1000 };
+const UNIT_INSUMOS = ["limao_unid", "cebolinha_maco", "coentro_maco"]; // não quebram, sempre em unidade/maço
 
 /* ---------- Helpers ---------- */
 function getRecipe() {
@@ -581,7 +584,10 @@ function computeInsumoNeeds(items){
       add("cebola", base.cebola[sizeKey]);
       add("pimenta_cheiro", base.pimenta_cheiro[sizeKey]);
       const isCheiroVerdeFamily = prodKey.startsWith("cheiro_verde") || prodKey === "toque_caseiro";
-      if (isCheiroVerdeFamily) add("cheiro_verde_folha", recipe.cheiro_verde_extra.cheiro_verde_folha[sizeKey]);
+      if (isCheiroVerdeFamily) {
+        add("cebolinha_maco", recipe.cheiro_verde_extra.cebolinha_maco[sizeKey]);
+        add("coentro_maco", recipe.cheiro_verde_extra.coentro_maco[sizeKey]);
+      }
       if (prodKey === "tradicional_picante" || prodKey === "cheiro_verde_picante") add("pimenta_malagueta", recipe.transform.pimenta_malagueta[sizeKey]);
       if (prodKey === "toque_baiano") {
         add("pimenta_malagueta", recipe.transform.pimenta_malagueta[sizeKey]);
@@ -628,7 +634,7 @@ function comprasJaFeitas(){
 function renderCompraRow(k, necessario){
   const comprado = comprasJaFeitas()[k] || 0;
   const falta = Math.max(0, necessario - comprado);
-  const unidade = k.includes("limao") ? "un" : "g";
+  const unidade = (UNIT_INSUMOS.includes(k) || k.includes("limao")) ? "un" : "g";
   const completo = falta <= 0;
   return `<div class="compra-row ${completo?'checked':''}">
     <span style="font-size:16px;">${completo ? '✅' : '⚠️'}</span>
@@ -642,7 +648,7 @@ function renderCompras(panel){
   const { needs, potes, moedorCount } = computeInsumoNeeds(items);
   const comprado = comprasJaFeitas();
   let html = `<h2>Lista de compras</h2><div class="subtitle">Compara o que ainda é necessário com o que você já registrou de compra na aba Caixa. Some da lista assim que estiver completo.</div>`;
-  const allKeys = Object.keys(needs).filter(k => k !== "limao_unid");
+  const allKeys = Object.keys(needs);
   const pendentes = allKeys.filter(k => (needs[k] - (comprado[k]||0)) > 0);
   const completos = allKeys.filter(k => (needs[k] - (comprado[k]||0)) <= 0);
 
@@ -654,16 +660,15 @@ function renderCompras(panel){
   if (completos.length > 0) {
     html += `<div class="config-note" style="margin-top:10px;">✅ Já comprado o suficiente: ${completos.map(k => INSUMO_LABELS[k]||k).join(", ")}</div>`;
   }
-  html += `<h2 style="margin-top:20px;">Embalagens e itens por unidade</h2>`;
+  html += `<h2 style="margin-top:20px;">Embalagens (informativo)</h2>`;
   const embalagensItems = [
     { key: "pote_300", label: "Pote de 300g", qtd: potes["300"]||0 },
     { key: "pote_500", label: "Pote de 500g", qtd: potes["500"]||0 },
     { key: "pote_1000", label: "Pote de 1kg", qtd: potes["1000"]||0 },
     { key: "moedor", label: "Moedor (Saladete com moedor)", qtd: moedorCount, extra: ` — R$ ${(moedorCount*MOEDOR_COST).toFixed(2)}` },
-    { key: "limao", label: "Limão", qtd: (needs["limao_unid"]||0).toFixed(0) + " unidades" },
   ];
   html += `<div class="compra-list">` + embalagensItems.map(it => `<div class="compra-row"><span class="compra-nome">${it.label}</span><span class="compra-qtd">${it.qtd}${it.extra||""}</span></div>`).join("") + `</div>`;
-  html += `<div class="config-note">Potes, moedor e limão não têm comparação automática de "já comprado" — são informativos. O limão é usado em unidades mas comprado em peso, então lance o valor gasto na aba Caixa como "Outro/Extra".</div>`;
+  html += `<div class="config-note">Potes e moedor não têm comparação automática — são só informativos. O custo deles varia por lote, lance na aba Caixa como "Outro/Extra" quando comprar.</div>`;
   panel.innerHTML = html;
 }
 
@@ -677,10 +682,14 @@ function renderFicha(panel){
       <td><input type="number" step="0.001" id="f_base_${k}_300" value="${recipe.dia_a_dia_base[k]["300"]}"></td>
       <td><input type="number" step="0.001" id="f_base_${k}_500" value="${recipe.dia_a_dia_base[k]["500"]}"></td>
       <td><input type="number" step="0.001" id="f_base_${k}_1000" value="${recipe.dia_a_dia_base[k]["1000"]}"></td></tr>`).join("")}
-    <tr><td>${INSUMO_LABELS.cheiro_verde_folha}</td>
-      <td><input type="number" step="0.001" id="f_cv_300" value="${recipe.cheiro_verde_extra.cheiro_verde_folha["300"]}"></td>
-      <td><input type="number" step="0.001" id="f_cv_500" value="${recipe.cheiro_verde_extra.cheiro_verde_folha["500"]}"></td>
-      <td><input type="number" step="0.001" id="f_cv_1000" value="${recipe.cheiro_verde_extra.cheiro_verde_folha["1000"]}"></td></tr>
+    <tr><td>${INSUMO_LABELS.cebolinha_maco}</td>
+      <td><input type="number" step="0.001" id="f_cebolinha_300" value="${recipe.cheiro_verde_extra.cebolinha_maco["300"]}"></td>
+      <td><input type="number" step="0.001" id="f_cebolinha_500" value="${recipe.cheiro_verde_extra.cebolinha_maco["500"]}"></td>
+      <td><input type="number" step="0.001" id="f_cebolinha_1000" value="${recipe.cheiro_verde_extra.cebolinha_maco["1000"]}"></td></tr>
+    <tr><td>${INSUMO_LABELS.coentro_maco}</td>
+      <td><input type="number" step="0.001" id="f_coentro_300" value="${recipe.cheiro_verde_extra.coentro_maco["300"]}"></td>
+      <td><input type="number" step="0.001" id="f_coentro_500" value="${recipe.cheiro_verde_extra.coentro_maco["500"]}"></td>
+      <td><input type="number" step="0.001" id="f_coentro_1000" value="${recipe.cheiro_verde_extra.coentro_maco["1000"]}"></td></tr>
   </table>
   <b>Adicionais de transformação (por gramatura)</b>
   <table><tr><th>Insumo</th><th>300g</th><th>500g</th><th>1kg</th></tr>
@@ -720,7 +729,10 @@ function saveFicha(){
   Object.keys(recipe.dia_a_dia_base).forEach(k => {
     ["300","500","1000"].forEach(sz => { recipe.dia_a_dia_base[k][sz] = parseFloat(document.getElementById(`f_base_${k}_${sz}`).value) || 0; });
   });
-  ["300","500","1000"].forEach(sz => { recipe.cheiro_verde_extra.cheiro_verde_folha[sz] = parseFloat(document.getElementById(`f_cv_${sz}`).value) || 0; });
+  ["300","500","1000"].forEach(sz => {
+    recipe.cheiro_verde_extra.cebolinha_maco[sz] = parseFloat(document.getElementById(`f_cebolinha_${sz}`).value) || 0;
+    recipe.cheiro_verde_extra.coentro_maco[sz] = parseFloat(document.getElementById(`f_coentro_${sz}`).value) || 0;
+  });
   Object.keys(recipe.transform).forEach(k => {
     ["300","500","1000"].forEach(sz => { recipe.transform[k][sz] = parseFloat(document.getElementById(`f_tr_${k}_${sz}`).value) || 0; });
   });
@@ -741,8 +753,23 @@ function saveFicha(){
 
 /* ============ TAB: Produção ============ */
 function fmtQty(v, insumo){
-  const unit = insumo && insumo.includes("limao") ? "un" : "g";
+  const isUnit = insumo && (UNIT_INSUMOS.includes(insumo) || insumo.includes("limao"));
+  const unit = isUnit ? "un" : "g";
   return `${v.toFixed(v < 10 ? 2 : 1)}${unit}`;
+}
+
+// Converte quantidade decimal de maço em fração legível (1/4, 1/2, 3/4, maço inteiro)
+function fracaoMaco(qtdMacos){
+  const quartos = Math.round(qtdMacos * 4);
+  const inteiros = Math.floor(quartos / 4);
+  const resto = quartos % 4;
+  const fracLabel = { 0: "", 1: "1/4", 2: "1/2", 3: "3/4" }[resto];
+  if (resto === 0) {
+    if (inteiros === 0) return "0 maço";
+    return inteiros + (inteiros === 1 ? " maço" : " maços");
+  }
+  if (inteiros === 0) return fracLabel + " de maço";
+  return inteiros + (inteiros === 1 ? " maço e " : " maços e ") + fracLabel;
 }
 
 let producaoSelecionados = null; // Set de order ids marcados pra produzir agora (null = ainda não inicializado)
@@ -943,13 +970,15 @@ function renderProducao(panel){
     const salRatio = base.sal["300"] / 300;
     const cebolaRatio = base.cebola["300"] / 300;
     const pimCheiroRatio = base.pimenta_cheiro["300"] / 300;
-    const folhaRatio = recipe.cheiro_verde_extra.cheiro_verde_folha["300"] / 300;
+    const cebolinhaRatio = recipe.cheiro_verde_extra.cebolinha_maco["300"] / 300;
+    const coentroRatio = recipe.cheiro_verde_extra.coentro_maco["300"] / 300;
 
     const alhoFamilia = alhoRatio * cvTotalWeight;
     const totalSal = salRatio * cvTotalWeight;
     const totalCebola = cebolaRatio * cvTotalWeight;
     const totalPimCheiro = pimCheiroRatio * cvTotalWeight;
-    const totalFolha = folhaRatio * cvTotalWeight;
+    const totalCebolinha = cebolinhaRatio * cvTotalWeight;
+    const totalCoentro = coentroRatio * cvTotalWeight;
 
     const pureUnidades300 = pureAssignedTo ? 0 : pureUnitsRemaining["300"];
     const pureUnidades500 = pureAssignedTo ? 0 : pureUnitsRemaining["500"];
@@ -965,9 +994,9 @@ function renderProducao(panel){
       html += `<div class="chain-step">${step}. Bata todo o Alho de uma vez: ${fmtQty(alhoFamilia + pureAlho)} (${fmtQty(alhoFamilia)} da família + ${fmtQty(pureAlho)} do Pure).</div>`; step++;
       const purePorTamanho = [pureUnidades300 > 0 ? `${pureUnidades300} de 300g` : null, pureUnidades500 > 0 ? `${pureUnidades500} de 500g` : null].filter(Boolean).join(" + ");
       html += `<div class="chain-step">${step}. Retire ${fmtQty(pureAlho)} de Alho já batido (${purePorTamanho}) — é o <b>Pure</b>, misture o azeite depois e embale.</div>`; step++;
-      html += `<div class="chain-step">${step}. Com o Alho restante (${fmtQty(alhoFamilia)}), misture ${fmtQty(totalSal)} de Sal, ${fmtQty(totalCebola)} de Cebola, ${fmtQty(totalPimCheiro)} de Pimenta de Cheiro e ${fmtQty(totalFolha)} de Cheiro Verde. Rende ${cvTotalWeight}g de massa (${cvTotalUnits} unidade(s)).</div>`; step++;
+      html += `<div class="chain-step">${step}. Com o Alho restante (${fmtQty(alhoFamilia)}), misture ${fmtQty(totalSal)} de Sal, ${fmtQty(totalCebola)} de Cebola, ${fmtQty(totalPimCheiro)} de Pimenta de Cheiro, ${fracaoMaco(totalCebolinha)} de Cebolinha e ${fracaoMaco(totalCoentro)} de Coentro. Rende ${cvTotalWeight}g de massa (${cvTotalUnits} unidade(s)).</div>`; step++;
     } else {
-      html += `<div class="chain-step">${step}. Bata tudo junto (misturando os tamanhos): ${fmtQty(alhoFamilia)} de Alho, ${fmtQty(totalSal)} de Sal, ${fmtQty(totalCebola)} de Cebola, ${fmtQty(totalPimCheiro)} de Pimenta de Cheiro, ${fmtQty(totalFolha)} de Cheiro Verde. Rende ${cvTotalWeight}g de massa (${cvTotalUnits} unidade(s)).</div>`; step++;
+      html += `<div class="chain-step">${step}. Bata tudo junto (misturando os tamanhos): ${fmtQty(alhoFamilia)} de Alho, ${fmtQty(totalSal)} de Sal, ${fmtQty(totalCebola)} de Cebola, ${fmtQty(totalPimCheiro)} de Pimenta de Cheiro, ${fracaoMaco(totalCebolinha)} de Cebolinha e ${fracaoMaco(totalCoentro)} de Coentro. Rende ${cvTotalWeight}g de massa (${cvTotalUnits} unidade(s)).</div>`; step++;
     }
 
     const cvPorTamanho = ["300","500","1000"].filter(sz => u("cheiro_verde", sz) > 0).map(sz => `${u("cheiro_verde", sz)} de ${sz==="1000"?"1kg":sz+"g"}`);
@@ -1254,7 +1283,7 @@ async function reabrirMes(mk){
 function renderCaixa(panel){
   const { needs } = computeInsumoNeeds(allOrderItems().filter(i => !i.produzido));
   const compradoCaixa = comprasJaFeitas();
-  const insumoKeys = Object.keys(needs).filter(k => k !== "limao_unid" && (needs[k] - (compradoCaixa[k]||0)) > 0);
+  const insumoKeys = Object.keys(needs).filter(k => (needs[k] - (compradoCaixa[k]||0)) > 0);
 
   let html = `<h2>Fechamento de caixa</h2><div class="subtitle">Entradas (pedidos do app + fora do app + repasses) menos saídas (insumos + despesas).</div>`;
 
@@ -1268,14 +1297,14 @@ function renderCaixa(panel){
       <div class="form-grid" style="grid-template-columns:1fr;">
         <div><label>Insumo</label>
           <select id="c_insumo_select" onchange="onInsumoSelectChange()">
-            ${Object.entries(INSUMO_LABELS).filter(([k]) => k !== "limao_unid").map(([k,label]) => `<option value="${k}">${label}</option>`).join("")}
+            ${Object.entries(INSUMO_LABELS).map(([k,label]) => `<option value="${k}">${label}</option>`).join("")}
             <option value="__outro__">Outro / Extra (embalagem, gás, etc)</option>
           </select>
           <input type="text" id="c_insumo_extra" placeholder="Digite o nome do item" style="display:none; margin-top:6px;">
         </div>
-        <div><label>Valor por kg (R$)</label><input type="number" step="0.01" id="c_unitprice" placeholder="Ex: 25.00" oninput="atualizarCustoTotal()"></div>
-        <div><label>Quantidade comprada (kg)</label><input type="number" step="0.001" id="c_qty" placeholder="Ex: 1 (kg)" oninput="atualizarCustoTotal()"></div>
-        <div style="font-size:11px; color:var(--brown-soft); margin-top:-8px; margin-bottom:6px;">Para itens em unidade (ex: Limão via "Outro"), digite a quantidade normal, sem kg.</div>
+        <div><label id="c_price_label">Valor por kg (R$)</label><input type="number" step="0.01" id="c_unitprice" placeholder="Ex: 25.00" oninput="atualizarCustoTotal()"></div>
+        <div><label id="c_qty_label">Quantidade (kg)</label><input type="number" step="0.001" id="c_qty" placeholder="Ex: 1 (kg)" oninput="atualizarCustoTotal()"></div>
+        <div style="font-size:11px; color:var(--brown-soft); margin-top:-8px; margin-bottom:6px;">Alho, Sal e Cebola são comprados em kg. Os demais insumos, direto em grama.</div>
         <div><label>Custo total (calculado)</label><input type="text" id="c_cost_preview" value="R$ 0.00" disabled style="background:#eee;"></div>
         <div><label>Data</label><input type="date" id="c_date" value="${new Date().toISOString().slice(0,10)}"></div>
       </div>
@@ -1392,9 +1421,31 @@ function atualizarCustoTotal(){
   document.getElementById("c_cost_preview").value = "R$ " + (unitPrice * qty).toFixed(2);
 }
 
+const KG_INSUMOS = ["alho", "sal", "cebola"];
+
 function onInsumoSelectChange(){
   const val = document.getElementById("c_insumo_select").value;
   document.getElementById("c_insumo_extra").style.display = val === "__outro__" ? "block" : "none";
+  const label = document.getElementById("c_qty_label");
+  const priceLabel = document.getElementById("c_price_label");
+  const qtyInput = document.getElementById("c_qty");
+  if (val === "__outro__") {
+    label.textContent = "Quantidade";
+    priceLabel.textContent = "Valor unitário (R$)";
+    qtyInput.placeholder = "Ex: 5";
+  } else if (KG_INSUMOS.includes(val)) {
+    label.textContent = "Quantidade (kg)";
+    priceLabel.textContent = "Valor por kg (R$)";
+    qtyInput.placeholder = "Ex: 1 (kg)";
+  } else if (UNIT_INSUMOS.includes(val)) {
+    label.textContent = "Quantidade (unidade)";
+    priceLabel.textContent = "Valor por unidade (R$)";
+    qtyInput.placeholder = "Ex: 3";
+  } else {
+    label.textContent = "Quantidade (g)";
+    priceLabel.textContent = "Valor por g (R$)";
+    qtyInput.placeholder = "Ex: 100 (g)";
+  }
 }
 
 async function addInsumoPurchase(){
@@ -1404,8 +1455,8 @@ async function addInsumoPurchase(){
   const insumoKey = isExtra ? null : selectVal;
   const unitPrice = parseFloat(document.getElementById("c_unitprice").value) || 0;
   const qtyInformada = parseFloat(document.getElementById("c_qty").value) || 0;
-  // pra insumos da ficha técnica (peso), a quantidade é digitada em kg e convertida pra grama
-  const qty = isExtra ? qtyInformada : qtyInformada * 1000;
+  // só Alho, Sal e Cebola são digitados em kg e convertidos pra grama; o resto já é grama direto
+  const qty = (!isExtra && KG_INSUMOS.includes(insumoKey)) ? qtyInformada * 1000 : qtyInformada;
   const cost = unitPrice * qtyInformada;
   const date = document.getElementById("c_date").value;
   if (!insumo) return alert("Informe o insumo.");
