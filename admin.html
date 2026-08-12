@@ -634,12 +634,15 @@ function comprasJaFeitas(){
 function renderCompraRow(k, necessario){
   const comprado = comprasJaFeitas()[k] || 0;
   const falta = Math.max(0, necessario - comprado);
-  const unidade = (UNIT_INSUMOS.includes(k) || k.includes("limao")) ? "un" : "g";
+  const isUnit = UNIT_INSUMOS.includes(k) || k.includes("limao");
+  const unidade = isUnit ? "un" : "g";
   const completo = falta <= 0;
+  const faltaTexto = isUnit ? Math.ceil(falta) : falta.toFixed(2);
+  const compradoTexto = isUnit ? Math.ceil(comprado) : comprado.toFixed(2);
   return `<div class="compra-row ${completo?'checked':''}">
     <span style="font-size:16px;">${completo ? '✅' : '⚠️'}</span>
     <span class="compra-nome">${INSUMO_LABELS[k]||k}</span>
-    <span class="compra-qtd">${completo ? `comprado (${comprado.toFixed(2)}${unidade})` : `falta ${falta.toFixed(2)}${unidade}`}</span>
+    <span class="compra-qtd">${completo ? `comprado (${compradoTexto}${unidade})` : `falta ${faltaTexto}${unidade}`}</span>
   </div>`;
 }
 
