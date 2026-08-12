@@ -1484,7 +1484,7 @@ async function addInsumoPurchase(){
   const date = document.getElementById("c_date").value;
   if (!insumo) return alert("Informe o insumo.");
 
-  let qty, cost, unitPrice, pacoteG, pacoteQtd, pacoteValor;
+  let qty, cost, unitPrice, pacoteG = null, pacoteQtd = null, pacoteValor = null;
 
   if (isPacoteInsumo(selectVal)) {
     pacoteG = parseFloat(document.getElementById("c_pacote_g").value) || 0;
