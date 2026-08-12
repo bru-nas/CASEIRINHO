@@ -64,7 +64,9 @@
   .empty{ text-align:center; color: var(--brown-soft); font-size:13px; padding: 20px 0;}
   .batch-box{ border: 1.5px dashed var(--terracotta); border-radius:12px; padding:12px 14px; margin-bottom:10px;}
   .batch-box .title{ font-weight:700; color:var(--terracotta-dark); font-size:14px; margin-bottom:6px;}
-  .chain-step{ font-size:12.5px; color:var(--brown-soft); margin: 2px 0; padding-left: 10px; }
+  .chain-step{ font-size:13px; color:var(--brown); line-height:1.5; margin:0; padding:8px 10px; background:var(--white); border-radius:8px; margin-bottom:4px; }
+  .chain-step b{ color:var(--terracotta-dark); }
+  .chain-step .qty{ font-weight:600; white-space:nowrap; }
   .config-note{ background:#FFF6E5; border:1px solid #E8D9A8; border-radius:10px; padding:10px 12px; font-size:12px; color:#7A5E1E; margin-bottom:14px;}
 
   .compra-list{ display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
@@ -93,9 +95,14 @@
   .order-card{ background: var(--cream-2); border-radius:12px; padding:14px 16px; margin-bottom:10px; }
   .order-card-top{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
   .item-list{ display:flex; flex-direction:column; gap:4px; }
-  .item-row{ display:flex; justify-content:space-between; align-items:baseline; font-size:13.5px; background:var(--white); border-radius:8px; padding:7px 10px; }
-  .item-size{ font-size:11.5px; color:var(--brown-soft); margin-left:4px; }
-  .item-price{ font-weight:600; white-space:nowrap; }
+  .item-row{ font-size:13.5px; background:var(--white); border-radius:8px; padding:8px 10px; }
+  .item-row-top{ display:flex; align-items:center; gap:8px; }
+  .item-row-top label{ display:flex; align-items:center; gap:6px; min-width:0; flex:1; }
+  .item-row-top input[type=checkbox]{ flex-shrink:0; width:18px; height:18px; accent-color:var(--olive); }
+  .item-name{ font-weight:600; word-break:break-word; }
+  .item-name.done{ text-decoration:line-through; opacity:0.55; }
+  .item-size{ font-size:11.5px; color:var(--brown-soft); margin-left:24px; display:block; margin-top:2px; }
+  .item-price{ font-weight:600; white-space:nowrap; flex-shrink:0; }
   .order-card-total{ text-align:right; font-weight:700; font-size:13.5px; margin-top:6px; }
 
   .stepper{ display:flex; gap:4px; margin-top:10px; }
@@ -456,10 +463,10 @@ async function deleteRecord(node, id){
 const TABS = [
   { key:"pedidos", label:"Pedidos" },
   { key:"compras", label:"Lista de Compras" },
-  { key:"ficha", label:"Ficha Técnica" },
   { key:"producao", label:"Produção" },
   { key:"plataformas", label:"Fora do App" },
   { key:"caixa", label:"Caixa" },
+  { key:"ficha", label:"Ficha Técnica" },
 ];
 let activeTab = "pedidos";
 
@@ -581,10 +588,16 @@ function renderPedidos(panel){
         <div class="item-list">
           ${(o.items||[]).map((i, idx) => {
             const itemProduzido = !!(i.produzido || o.produzido);
-            return `<div class="item-row"><label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" ${itemProduzido?'checked':''} onchange="toggleItemProduzido('${o.source}','${o.id}',${idx},${itemProduzido})"><span style="${itemProduzido?'text-decoration:line-through; opacity:0.6;':''}">${i.prodLabel} <span class="item-size">${i.sizeLabel}</span>${i.isGift?' <span class="badge" style="background:var(--gold); color:var(--brown);">🎁 presente</span>':''}</span></label><span class="item-price">R$ ${(i.price||0).toFixed(2)}</span></div>`;
+            return `<div class="item-row">
+              <div class="item-row-top">
+                <label><input type="checkbox" ${itemProduzido?'checked':''} onchange="toggleItemProduzido('${o.source}','${o.id}',${idx},${itemProduzido})"><span class="item-name${itemProduzido?' done':''}">${i.prodLabel}${i.isGift?' <span class="badge" style="background:var(--gold); color:var(--brown);">🎁</span>':''}</span></label>
+                <span class="item-price">R$ ${(i.price||0).toFixed(2)}</span>
+              </div>
+              <span class="item-size">${i.sizeLabel}</span>
+            </div>`;
           }).join("")}
-          ${o.deliveryFee > 0 ? `<div class="item-row"><span>Taxa de entrega</span><span class="item-price">R$ ${o.deliveryFee.toFixed(2)}</span></div>` : ""}
-          ${o.desconto > 0 ? `<div class="item-row"><span>Desconto</span><span class="item-price" style="color:var(--red);">− R$ ${o.desconto.toFixed(2)}</span></div>` : ""}
+          ${o.deliveryFee > 0 ? `<div class="item-row"><div class="item-row-top"><span>Taxa de entrega</span><span class="item-price">R$ ${o.deliveryFee.toFixed(2)}</span></div></div>` : ""}
+          ${o.desconto > 0 ? `<div class="item-row"><div class="item-row-top"><span>Desconto</span><span class="item-price" style="color:var(--red);">− R$ ${o.desconto.toFixed(2)}</span></div></div>` : ""}
         </div>
         <div class="order-card-total">Total: R$ ${orderTotal.toFixed(2)}</div>
         <div class="stepper">
@@ -710,44 +723,67 @@ function renderCompras(panel){
 /* ============ TAB: Ficha Técnica ============ */
 function renderFicha(panel){
   const recipe = getRecipe();
-  let html = `<h2>Ficha técnica</h2><div class="subtitle">Quantidade de cada insumo por unidade vendida. Edite e salve — os valores são usados na lista de compras.</div>`;
-  html += `<b>Alho e Sal — quantidade própria por produto (bate tudo junto na produção, cada um na sua vez)</b>
-  <table><tr><th>Produto</th><th>Alho 300g</th><th>Sal 300g</th><th>Alho 500g</th><th>Sal 500g</th><th>Alho 1kg</th><th>Sal 1kg</th></tr>
-    ${Object.keys(recipe.dia_a_dia_alho_sal).map(pk => {
-      const prod = findProduct(pk);
-      const r = recipe.dia_a_dia_alho_sal[pk];
-      return `<tr><td>${prod?prod.label:pk}</td>
+  let html = `<h2>Ficha técnica</h2><div class="subtitle">Quantidade de cada insumo por produto. Edite e salve.</div>`;
+
+  // mapa: quais insumos extras cada produto usa, além de Alho/Sal/Cebola/Pimenta de Cheiro
+  const PRODUTO_EXTRAS = {
+    tradicional: [],
+    tradicional_picante: ["pimenta_malagueta"],
+    toque_caipira: ["acafrao", "mix_pimentas_aromat"],
+    toque_baiano: ["pimenta_malagueta", "cominho", "pimenta_do_reino", "salsa", "azeite_dende"],
+    cheiro_verde: ["cebolinha_maco", "coentro_maco"],
+    cheiro_verde_picante: ["cebolinha_maco", "coentro_maco", "pimenta_malagueta"],
+    toque_caseiro: ["cebolinha_maco", "coentro_maco", "pimenta_malagueta", "fumaca_po", "paprica_picante"],
+  };
+  // cada insumo extra só é editável na PRIMEIRA tabela em que aparece (evita duplicar campo editável)
+  const jaEditado = new Set();
+
+  html += `<div class="config-note" style="margin-top:0;">Cebola e Pimenta de Cheiro são compartilhados por todos; Malagueta/Cebolinha/Coentro também são compartilhados entre quem usa — edite uma vez, vale pra todos.</div>`;
+
+  Object.keys(recipe.dia_a_dia_alho_sal).forEach(pk => {
+    const prod = findProduct(pk);
+    const r = recipe.dia_a_dia_alho_sal[pk];
+    const extras = PRODUTO_EXTRAS[pk] || [];
+    html += `<b>${prod?prod.label:pk}</b>
+    <table><tr><th>Insumo</th><th>300g</th><th>500g</th><th>1kg</th></tr>
+      <tr><td>Alho</td>
         <td><input type="number" step="0.01" id="f_as_alho_${pk}_300" value="${r.alho["300"]}"></td>
-        <td><input type="number" step="0.01" id="f_as_sal_${pk}_300" value="${r.sal["300"]}"></td>
         <td><input type="number" step="0.01" id="f_as_alho_${pk}_500" value="${r.alho["500"]}"></td>
+        <td><input type="number" step="0.01" id="f_as_alho_${pk}_1000" value="${r.alho["1000"]}"></td></tr>
+      <tr><td>Sal</td>
+        <td><input type="number" step="0.01" id="f_as_sal_${pk}_300" value="${r.sal["300"]}"></td>
         <td><input type="number" step="0.01" id="f_as_sal_${pk}_500" value="${r.sal["500"]}"></td>
-        <td><input type="number" step="0.01" id="f_as_alho_${pk}_1000" value="${r.alho["1000"]}"></td>
-        <td><input type="number" step="0.01" id="f_as_sal_${pk}_1000" value="${r.sal["1000"]}"></td></tr>`;
-    }).join("")}
-  </table>
-  <b>Linha Dia a Dia (base) — por gramatura</b>
-  <table><tr><th>Insumo</th><th>300g</th><th>500g</th><th>1kg</th></tr>
-    ${Object.keys(recipe.dia_a_dia_base).map(k => `<tr><td>${INSUMO_LABELS[k]||k}</td>
-      <td><input type="number" step="0.001" id="f_base_${k}_300" value="${recipe.dia_a_dia_base[k]["300"]}"></td>
-      <td><input type="number" step="0.001" id="f_base_${k}_500" value="${recipe.dia_a_dia_base[k]["500"]}"></td>
-      <td><input type="number" step="0.001" id="f_base_${k}_1000" value="${recipe.dia_a_dia_base[k]["1000"]}"></td></tr>`).join("")}
-    <tr><td>${INSUMO_LABELS.cebolinha_maco}</td>
-      <td><input type="number" step="0.001" id="f_cebolinha_300" value="${recipe.cheiro_verde_extra.cebolinha_maco["300"]}"></td>
-      <td><input type="number" step="0.001" id="f_cebolinha_500" value="${recipe.cheiro_verde_extra.cebolinha_maco["500"]}"></td>
-      <td><input type="number" step="0.001" id="f_cebolinha_1000" value="${recipe.cheiro_verde_extra.cebolinha_maco["1000"]}"></td></tr>
-    <tr><td>${INSUMO_LABELS.coentro_maco}</td>
-      <td><input type="number" step="0.001" id="f_coentro_300" value="${recipe.cheiro_verde_extra.coentro_maco["300"]}"></td>
-      <td><input type="number" step="0.001" id="f_coentro_500" value="${recipe.cheiro_verde_extra.coentro_maco["500"]}"></td>
-      <td><input type="number" step="0.001" id="f_coentro_1000" value="${recipe.cheiro_verde_extra.coentro_maco["1000"]}"></td></tr>
-  </table>
-  <b>Adicionais de transformação (por gramatura)</b>
-  <table><tr><th>Insumo</th><th>300g</th><th>500g</th><th>1kg</th></tr>
-    ${Object.keys(recipe.transform).map(k => `<tr><td>${INSUMO_LABELS[k]||k}</td>
-      <td><input type="number" step="0.001" id="f_tr_${k}_300" value="${recipe.transform[k]["300"]}"></td>
-      <td><input type="number" step="0.001" id="f_tr_${k}_500" value="${recipe.transform[k]["500"]}"></td>
-      <td><input type="number" step="0.001" id="f_tr_${k}_1000" value="${recipe.transform[k]["1000"]}"></td></tr>`).join("")}
-  </table>
-  <b>Linha Pure (só alho)</b>
+        <td><input type="number" step="0.01" id="f_as_sal_${pk}_1000" value="${r.sal["1000"]}"></td></tr>
+      ${["cebola","pimenta_cheiro"].map(k => {
+        const editavel = !jaEditado.has(k);
+        jaEditado.add(k);
+        const v = recipe.dia_a_dia_base[k];
+        if (editavel) {
+          return `<tr><td>${INSUMO_LABELS[k]}</td>
+            <td><input type="number" step="0.01" id="f_base_${k}_300" value="${v["300"]}"></td>
+            <td><input type="number" step="0.01" id="f_base_${k}_500" value="${v["500"]}"></td>
+            <td><input type="number" step="0.01" id="f_base_${k}_1000" value="${v["1000"]}"></td></tr>`;
+        }
+        return `<tr><td>${INSUMO_LABELS[k]}</td><td>${v["300"]}</td><td>${v["500"]}</td><td>${v["1000"]}</td></tr>`;
+      }).join("")}
+      ${extras.map(k => {
+        const isMaco = k === "cebolinha_maco" || k === "coentro_maco";
+        const editavel = !jaEditado.has(k);
+        jaEditado.add(k);
+        const v = isMaco ? recipe.cheiro_verde_extra[k] : recipe.transform[k];
+        const idPrefix = isMaco ? (k === "cebolinha_maco" ? "f_cebolinha" : "f_coentro") : `f_tr_${k}`;
+        if (editavel) {
+          return `<tr><td>${INSUMO_LABELS[k]}</td>
+            <td><input type="number" step="0.01" id="${idPrefix}_300" value="${v["300"]}"></td>
+            <td><input type="number" step="0.01" id="${idPrefix}_500" value="${v["500"]}"></td>
+            <td><input type="number" step="0.01" id="${idPrefix}_1000" value="${v["1000"]}"></td></tr>`;
+        }
+        return `<tr><td>${INSUMO_LABELS[k]}</td><td>${v["300"]}</td><td>${v["500"]}</td><td>${v["1000"]}</td></tr>`;
+      }).join("")}
+    </table>`;
+  });
+
+  html += `<b>Linha Pure (só alho)</b>
   <table><tr><th>300g</th><th>500g</th></tr>
     <tr><td><input type="number" step="0.1" id="f_pure_300" value="${recipe.pure.alho["300"]}"></td>
     <td><input type="number" step="0.1" id="f_pure_500" value="${recipe.pure.alho["500"]}"></td></tr>
@@ -1008,11 +1044,11 @@ function renderProducao(panel){
       pureAssignedTo = "tradicional";
     }
 
-    html += `<div class="chain-step">${step}. Bata tudo junto de uma vez: ${fmtQty(totAlho + pureAlho)} de Alho${pureTemAlgo ? ` (${fmtQty(totAlho)} da família + ${fmtQty(pureAlho)} do Pure)` : ""}, ${fmtQty(totSal)} de Sal, ${fmtQty(totCebola)} de Cebola e ${fmtQty(totPimCheiro)} de Pimenta de Cheiro.</div>`; step++;
+    html += `<div class="chain-step"><b>Bater junto:</b> <span class="qty">${fmtQty(totAlho + pureAlho)} Alho</span>${pureTemAlgo ? ` <span class="qty">(${fmtQty(pureAlho)} p/ Pure)</span>` : ""} · <span class="qty">${fmtQty(totSal)} Sal</span> · <span class="qty">${fmtQty(totCebola)} Cebola</span> · <span class="qty">${fmtQty(totPimCheiro)} Pim.Cheiro</span></div>`; step++;
 
     if (pureTemAlgo) {
-      const purePorTamanho = [pureUnidades300 > 0 ? `${pureUnidades300} de 300g` : null, pureUnidades500 > 0 ? `${pureUnidades500} de 500g` : null].filter(Boolean).join(" + ");
-      html += `<div class="chain-step">${step}. Antes de misturar o sal, separe ${fmtQty(pureAlho)} de Alho puro (${purePorTamanho}) — é o <b>Pure</b>, misture o azeite depois e embale.</div>`; step++;
+      const purePorTamanho = [pureUnidades300 > 0 ? `${pureUnidades300}×300g` : null, pureUnidades500 > 0 ? `${pureUnidades500}×500g` : null].filter(Boolean).join(" + ");
+      html += `<div class="chain-step">Separe <span class="qty">${fmtQty(pureAlho)}</span> de Alho puro (${purePorTamanho}) → <b>Pure</b>, misture o azeite e embale.</div>`; step++;
     }
 
     // Retira a porção de cada produto, na ordem: Tradicional -> Toque Caipira -> Tradicional Picante -> Toque Baiano
@@ -1020,24 +1056,24 @@ function renderProducao(panel){
     if (tradSizes.length > 0) {
       let a=0,s=0,c=0,p=0;
       tradSizes.forEach(sz => { const n=u("tradicional",sz); a+=as.tradicional.alho[sz]*n; s+=as.tradicional.sal[sz]*n; c+=recipe.dia_a_dia_base.cebola[sz]*n; p+=recipe.dia_a_dia_base.pimenta_cheiro[sz]*n; });
-      const porTamanho = tradSizes.map(sz => `${u("tradicional", sz)} de ${sz==="1000"?"1kg":sz+"g"}`);
-      html += `<div class="chain-step">${step}. Retire a porção do <b>Tradicional</b> (${fmtQty(a+s+c+p)}: ${porTamanho.join(" + ")}) — já está pronto, embale cada um no tamanho certo.</div>`; step++;
+      const porTamanho = tradSizes.map(sz => `${u("tradicional", sz)}×${sz==="1000"?"1kg":sz+"g"}`);
+      html += `<div class="chain-step">Retire <span class="qty">${fmtQty(a+s+c+p)}</span> → <b>Tradicional</b> (${porTamanho.join(" + ")}), embale.</div>`; step++;
     }
 
     const caipiraSizes = ["300","500","1000"].filter(sz => u("toque_caipira", sz) > 0);
     if (caipiraSizes.length > 0) {
       let a=0,s=0,c=0,p=0,acaf=0,mix=0;
       caipiraSizes.forEach(sz => { const n=u("toque_caipira",sz); a+=as.toque_caipira.alho[sz]*n; s+=as.toque_caipira.sal[sz]*n; c+=recipe.dia_a_dia_base.cebola[sz]*n; p+=recipe.dia_a_dia_base.pimenta_cheiro[sz]*n; acaf+=recipe.transform.acafrao[sz]*n; mix+=recipe.transform.mix_pimentas_aromat[sz]*n; });
-      const porTamanho = caipiraSizes.map(sz => `${u("toque_caipira", sz)} de ${sz==="1000"?"1kg":sz+"g"}`);
-      html += `<div class="chain-step">${step}. Retire a porção do <b>Toque Caipira</b> (${fmtQty(a+s+c+p)}: ${porTamanho.join(" + ")}), adicione ${fmtQty(acaf)} de Açafrão e ${fmtQty(mix)} de Mix de Pimentas Aromáticas — embale cada um no tamanho certo.</div>`; step++;
+      const porTamanho = caipiraSizes.map(sz => `${u("toque_caipira", sz)}×${sz==="1000"?"1kg":sz+"g"}`);
+      html += `<div class="chain-step">Retire <span class="qty">${fmtQty(a+s+c+p)}</span> + <span class="qty">${fmtQty(acaf)} Açafrão</span> + <span class="qty">${fmtQty(mix)} Mix Pimentas</span> → <b>Toque Caipira</b> (${porTamanho.join(" + ")}), embale.</div>`; step++;
     }
 
     const picanteSizes = ["300","500","1000"].filter(sz => u("tradicional_picante", sz) > 0);
     if (picanteSizes.length > 0) {
       let a=0,s=0,c=0,p=0,mal=0;
       picanteSizes.forEach(sz => { const n=u("tradicional_picante",sz); a+=as.tradicional_picante.alho[sz]*n; s+=as.tradicional_picante.sal[sz]*n; c+=recipe.dia_a_dia_base.cebola[sz]*n; p+=recipe.dia_a_dia_base.pimenta_cheiro[sz]*n; mal+=recipe.transform.pimenta_malagueta[sz]*n; });
-      const porTamanho = picanteSizes.map(sz => `${u("tradicional_picante", sz)} de ${sz==="1000"?"1kg":sz+"g"}`);
-      html += `<div class="chain-step">${step}. Retire a porção do <b>Tradicional Picante</b> (${fmtQty(a+s+c+p)}: ${porTamanho.join(" + ")}), adicione ${fmtQty(mal)} de Pimenta Malagueta — embale cada um no tamanho certo.</div>`; step++;
+      const porTamanho = picanteSizes.map(sz => `${u("tradicional_picante", sz)}×${sz==="1000"?"1kg":sz+"g"}`);
+      html += `<div class="chain-step">Retire <span class="qty">${fmtQty(a+s+c+p)}</span> + <span class="qty">${fmtQty(mal)} Malagueta</span> → <b>Tradicional Picante</b> (${porTamanho.join(" + ")}), embale.</div>`; step++;
     }
 
     const baianoSizes = ["300","500","1000"].filter(sz => u("toque_baiano", sz) > 0);
@@ -1048,8 +1084,8 @@ function renderProducao(panel){
         a+=as.toque_baiano.alho[sz]*n; s+=as.toque_baiano.sal[sz]*n; c+=recipe.dia_a_dia_base.cebola[sz]*n; p+=recipe.dia_a_dia_base.pimenta_cheiro[sz]*n;
         mal+=recipe.transform.pimenta_malagueta[sz]*n; com+=recipe.transform.cominho[sz]*n; rei+=recipe.transform.pimenta_do_reino[sz]*n; sal2+=recipe.transform.salsa[sz]*n; den+=recipe.transform.azeite_dende[sz]*n;
       });
-      const porTamanho = baianoSizes.map(sz => `${u("toque_baiano", sz)} de ${sz==="1000"?"1kg":sz+"g"}`);
-      html += `<div class="chain-step">${step}. O que sobrar é a porção do <b>Toque Baiano</b> (${fmtQty(a+s+c+p)}: ${porTamanho.join(" + ")}) — adicione ${fmtQty(mal)} de Pimenta Malagueta, ${fmtQty(com)} de Cominho, ${fmtQty(rei)} de Pimenta do Reino, ${fmtQty(sal2)} de Salsa e ${fmtQty(den)} de Azeite de Dendê — embale cada um no tamanho certo.</div>`; step++;
+      const porTamanho = baianoSizes.map(sz => `${u("toque_baiano", sz)}×${sz==="1000"?"1kg":sz+"g"}`);
+      html += `<div class="chain-step">Sobra: <span class="qty">${fmtQty(a+s+c+p)}</span> + <span class="qty">${fmtQty(mal)} Malagueta</span> + <span class="qty">${fmtQty(com)} Cominho</span> + <span class="qty">${fmtQty(rei)} P.Reino</span> + <span class="qty">${fmtQty(sal2)} Salsa</span> + <span class="qty">${fmtQty(den)} Dendê</span> → <b>Toque Baiano</b> (${porTamanho.join(" + ")}), embale.</div>`; step++;
     }
     html += `</div>`;
   }
@@ -1085,27 +1121,27 @@ function renderProducao(panel){
       pureAssignedTo = "cheiro_verde";
     }
 
-    html += `<div class="chain-step">${step}. Bata tudo junto de uma vez: ${fmtQty(totAlho + pureAlho)} de Alho${pureTemAlgo ? ` (${fmtQty(totAlho)} da família + ${fmtQty(pureAlho)} do Pure)` : ""}, ${fmtQty(totSal)} de Sal, ${fmtQty(totCebola)} de Cebola, ${fmtQty(totPimCheiro)} de Pimenta de Cheiro, ${fracaoMaco(totCebolinha)} de Cebolinha e ${fracaoMaco(totCoentro)} de Coentro.</div>`; step++;
+    html += `<div class="chain-step"><b>Bater junto:</b> <span class="qty">${fmtQty(totAlho + pureAlho)} Alho</span>${pureTemAlgo ? ` <span class="qty">(${fmtQty(pureAlho)} p/ Pure)</span>` : ""} · <span class="qty">${fmtQty(totSal)} Sal</span> · <span class="qty">${fmtQty(totCebola)} Cebola</span> · <span class="qty">${fmtQty(totPimCheiro)} Pim.Cheiro</span> · <span class="qty">${fracaoMaco(totCebolinha)} Cebolinha</span> · <span class="qty">${fracaoMaco(totCoentro)} Coentro</span></div>`; step++;
 
     if (pureTemAlgo) {
-      const purePorTamanho = [pureUnidades300 > 0 ? `${pureUnidades300} de 300g` : null, pureUnidades500 > 0 ? `${pureUnidades500} de 500g` : null].filter(Boolean).join(" + ");
-      html += `<div class="chain-step">${step}. Antes de misturar o sal, separe ${fmtQty(pureAlho)} de Alho puro (${purePorTamanho}) — é o <b>Pure</b>, misture o azeite depois e embale.</div>`; step++;
+      const purePorTamanho = [pureUnidades300 > 0 ? `${pureUnidades300}×300g` : null, pureUnidades500 > 0 ? `${pureUnidades500}×500g` : null].filter(Boolean).join(" + ");
+      html += `<div class="chain-step">Separe <span class="qty">${fmtQty(pureAlho)}</span> de Alho puro (${purePorTamanho}) → <b>Pure</b>, misture o azeite e embale.</div>`; step++;
     }
 
     const cvSizes = ["300","500","1000"].filter(sz => u("cheiro_verde", sz) > 0);
     if (cvSizes.length > 0) {
       let a=0,s=0,c=0,p=0,cb=0,co=0;
       cvSizes.forEach(sz => { const n=u("cheiro_verde",sz); a+=as.cheiro_verde.alho[sz]*n; s+=as.cheiro_verde.sal[sz]*n; c+=recipe.dia_a_dia_base.cebola[sz]*n; p+=recipe.dia_a_dia_base.pimenta_cheiro[sz]*n; cb+=recipe.cheiro_verde_extra.cebolinha_maco[sz]*n; co+=recipe.cheiro_verde_extra.coentro_maco[sz]*n; });
-      const porTamanho = cvSizes.map(sz => `${u("cheiro_verde", sz)} de ${sz==="1000"?"1kg":sz+"g"}`);
-      html += `<div class="chain-step">${step}. Retire a porção do <b>Cheiro Verde</b> (${fmtQty(a+s+c+p)}: ${porTamanho.join(" + ")}) — já está pronto, embale cada um no tamanho certo.</div>`; step++;
+      const porTamanho = cvSizes.map(sz => `${u("cheiro_verde", sz)}×${sz==="1000"?"1kg":sz+"g"}`);
+      html += `<div class="chain-step">Retire <span class="qty">${fmtQty(a+s+c+p)}</span> → <b>Cheiro Verde</b> (${porTamanho.join(" + ")}), embale.</div>`; step++;
     }
 
     const picanteSizes = ["300","500","1000"].filter(sz => u("cheiro_verde_picante", sz) > 0);
     if (picanteSizes.length > 0) {
       let a=0,s=0,c=0,p=0,mal=0;
       picanteSizes.forEach(sz => { const n=u("cheiro_verde_picante",sz); a+=as.cheiro_verde_picante.alho[sz]*n; s+=as.cheiro_verde_picante.sal[sz]*n; c+=recipe.dia_a_dia_base.cebola[sz]*n; p+=recipe.dia_a_dia_base.pimenta_cheiro[sz]*n; mal+=recipe.transform.pimenta_malagueta[sz]*n; });
-      const porTamanho = picanteSizes.map(sz => `${u("cheiro_verde_picante", sz)} de ${sz==="1000"?"1kg":sz+"g"}`);
-      html += `<div class="chain-step">${step}. Retire a porção do <b>Cheiro Verde Picante</b> (${fmtQty(a+s+c+p)}: ${porTamanho.join(" + ")}), adicione ${fmtQty(mal)} de Pimenta Malagueta — embale cada um no tamanho certo.</div>`; step++;
+      const porTamanho = picanteSizes.map(sz => `${u("cheiro_verde_picante", sz)}×${sz==="1000"?"1kg":sz+"g"}`);
+      html += `<div class="chain-step">Retire <span class="qty">${fmtQty(a+s+c+p)}</span> + <span class="qty">${fmtQty(mal)} Malagueta</span> → <b>Cheiro Verde Picante</b> (${porTamanho.join(" + ")}), embale.</div>`; step++;
     }
 
     const caseiroSizes = ["300","500","1000"].filter(sz => u("toque_caseiro", sz) > 0);
@@ -1116,8 +1152,8 @@ function renderProducao(panel){
         a+=as.toque_caseiro.alho[sz]*n; s+=as.toque_caseiro.sal[sz]*n; c+=recipe.dia_a_dia_base.cebola[sz]*n; p+=recipe.dia_a_dia_base.pimenta_cheiro[sz]*n;
         mal+=recipe.transform.pimenta_malagueta[sz]*n; fum+=recipe.transform.fumaca_po[sz]*n; pap+=recipe.transform.paprica_picante[sz]*n;
       });
-      const porTamanho = caseiroSizes.map(sz => `${u("toque_caseiro", sz)} de ${sz==="1000"?"1kg":sz+"g"}`);
-      html += `<div class="chain-step">${step}. O que sobrar é a porção do <b>Toque Caseiro</b> (${fmtQty(a+s+c+p)}: ${porTamanho.join(" + ")}) — adicione ${fmtQty(mal)} de Pimenta Malagueta, ${fmtQty(fum)} de Fumaça em Pó e ${fmtQty(pap)} de Páprica Picante — embale cada um no tamanho certo.</div>`; step++;
+      const porTamanho = caseiroSizes.map(sz => `${u("toque_caseiro", sz)}×${sz==="1000"?"1kg":sz+"g"}`);
+      html += `<div class="chain-step">Sobra: <span class="qty">${fmtQty(a+s+c+p)}</span> + <span class="qty">${fmtQty(mal)} Malagueta</span> + <span class="qty">${fmtQty(fum)} Fumaça</span> + <span class="qty">${fmtQty(pap)} Páprica</span> → <b>Toque Caseiro</b> (${porTamanho.join(" + ")}), embale.</div>`; step++;
     }
     html += `</div>`;
   }
