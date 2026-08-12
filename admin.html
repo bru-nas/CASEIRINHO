@@ -77,6 +77,10 @@
   .compra-qtd{ flex:0 0 auto; font-size:13px; font-weight:700; color:var(--brown-soft); white-space:nowrap; }
   .compra-row.checked{ opacity:0.5; }
   .compra-row.checked .compra-nome{ text-decoration:line-through; }
+  .caixa-compras-grid{ display:grid; grid-template-columns: 1fr; gap:20px; margin-bottom:10px; }
+  @media (min-width: 640px) {
+    .caixa-compras-grid{ grid-template-columns: 1fr 1fr; }
+  }
 
   .customer-group{ margin-bottom: 22px; }
   .customer-group-header{
@@ -504,6 +508,11 @@ function renderPedidos(panel){
   });
 
   Object.values(groups).forEach(group => {
+    // pedidos já entregues vão pro final da lista
+    group.orders.sort((a, b) => {
+      if (!!a.entregue === !!b.entregue) return (b.createdAt||0) - (a.createdAt||0);
+      return a.entregue ? 1 : -1;
+    });
     const groupTotal = group.orders.reduce((s,o)=> s + (o.items||[]).reduce((s2,i)=>s2+(i.price||0),0), 0);
     html += `<div class="customer-group">
       <div class="customer-group-header">
@@ -1143,15 +1152,37 @@ async function reabrirMes(mk){
 }
 
 function renderCaixa(panel){
+  const { needs } = computeInsumoNeeds(allOrderItems().filter(i => !i.produzido));
+  const checklist = getComprasChecklist();
+  const insumoKeys = Object.keys(needs);
+
   let html = `<h2>Fechamento de caixa</h2><div class="subtitle">Entradas (pedidos do app + fora do app + repasses) menos saídas (insumos + despesas).</div>`;
-  html += `<b>Registrar compra de insumo</b>
-  <div class="form-grid">
-    <div><label>Insumo</label><input type="text" id="c_insumo" placeholder="Ex: Alho"></div>
-    <div><label>Quantidade</label><input type="number" step="0.1" id="c_qty" placeholder="Ex: 1000 (g)"></div>
-    <div><label>Valor pago (R$)</label><input type="number" step="0.01" id="c_cost" placeholder="Ex: 25.00"></div>
-    <div><label>Data</label><input type="date" id="c_date" value="${new Date().toISOString().slice(0,10)}"></div>
-  </div>
-  <button class="btn" onclick="addInsumoPurchase()">Registrar compra</button>`;
+
+  html += `<div class="caixa-compras-grid">
+    <div>
+      <b>Lista de compras (pendente)</b>
+      ${insumoKeys.length === 0 ? '<div class="empty" style="padding:12px 0;">Nada pendente.</div>' : `<div class="compra-list" style="margin-top:8px;">${insumoKeys.map(k => {
+        const checked = !!checklist["insumo_"+k];
+        return `<label class="compra-row ${checked?'checked':''}">
+          <input type="checkbox" ${checked?'checked':''} onchange="toggleCompraChecklist('insumo_${k}')">
+          <span class="compra-nome">${INSUMO_LABELS[k]||k}</span>
+          <span class="compra-qtd">${needs[k].toFixed(2)} ${k.includes("limao")?"un":"g"}</span>
+        </label>`;
+      }).join("")}</div>`}
+    </div>
+    <div>
+      <b>Registrar compra de insumo</b>
+      <div class="form-grid" style="grid-template-columns:1fr;">
+        <div><label>Insumo</label><input type="text" id="c_insumo" placeholder="Ex: Alho"></div>
+        <div><label>Valor unitário (R$ por g/un)</label><input type="number" step="0.0001" id="c_unitprice" placeholder="Ex: 0.025" oninput="atualizarCustoTotal()"></div>
+        <div><label>Quantidade</label><input type="number" step="0.1" id="c_qty" placeholder="Ex: 1000 (g)" oninput="atualizarCustoTotal()"></div>
+        <div><label>Custo total (calculado)</label><input type="text" id="c_cost_preview" value="R$ 0.00" disabled style="background:#eee;"></div>
+        <div><label>Data</label><input type="date" id="c_date" value="${new Date().toISOString().slice(0,10)}"></div>
+      </div>
+      <button class="btn" onclick="addInsumoPurchase()">Registrar compra</button>
+    </div>
+  </div>`;
+
   html += `<b style="display:block; margin-top:22px;">Registrar repasse de plataforma (fim do mês)</b>
   <div class="form-grid">
     <div><label>Plataforma</label><select id="r_platform">${PLATFORMS.slice(1).map(p=>`<option>${p}</option>`).join("")}</select></div>
@@ -1255,13 +1286,20 @@ function renderCaixa(panel){
   panel.innerHTML = html;
 }
 
+function atualizarCustoTotal(){
+  const unitPrice = parseFloat(document.getElementById("c_unitprice").value) || 0;
+  const qty = parseFloat(document.getElementById("c_qty").value) || 0;
+  document.getElementById("c_cost_preview").value = "R$ " + (unitPrice * qty).toFixed(2);
+}
+
 async function addInsumoPurchase(){
   const insumo = document.getElementById("c_insumo").value.trim();
+  const unitPrice = parseFloat(document.getElementById("c_unitprice").value) || 0;
   const qty = parseFloat(document.getElementById("c_qty").value) || 0;
-  const cost = parseFloat(document.getElementById("c_cost").value) || 0;
+  const cost = unitPrice * qty;
   const date = document.getElementById("c_date").value;
   if (!insumo) return alert("Informe o insumo.");
-  await pushRecord("compras_insumos", { insumo, qty, cost, date });
+  await pushRecord("compras_insumos", { insumo, unitPrice, qty, cost, date });
   await loadAll(); renderMain();
 }
 async function addRepasse(){
