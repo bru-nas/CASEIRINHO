@@ -640,12 +640,19 @@ function renderCompraRow(k, necessario){
 function renderCompras(panel){
   const items = allOrderItems().filter(i => !i.produzido);
   const { needs, potes, moedorCount } = computeInsumoNeeds(items);
-  let html = `<h2>Lista de compras</h2><div class="subtitle">Compara o que ainda é necessário com o que você já registrou de compra na aba Caixa. Atualiza sozinho.</div>`;
-  const insumoKeys = Object.keys(needs).filter(k => k !== "limao_unid");
-  if (insumoKeys.length === 0) {
-    html += `<div class="empty">Nenhum pedido pra calcular ainda.</div>`;
+  const comprado = comprasJaFeitas();
+  let html = `<h2>Lista de compras</h2><div class="subtitle">Compara o que ainda é necessário com o que você já registrou de compra na aba Caixa. Some da lista assim que estiver completo.</div>`;
+  const allKeys = Object.keys(needs).filter(k => k !== "limao_unid");
+  const pendentes = allKeys.filter(k => (needs[k] - (comprado[k]||0)) > 0);
+  const completos = allKeys.filter(k => (needs[k] - (comprado[k]||0)) <= 0);
+
+  if (pendentes.length === 0) {
+    html += `<div class="empty">Nada pendente pra comprar — tudo certo! ✅</div>`;
   } else {
-    html += `<div class="compra-list">` + insumoKeys.map(k => renderCompraRow(k, needs[k])).join("") + `</div>`;
+    html += `<div class="compra-list">` + pendentes.map(k => renderCompraRow(k, needs[k])).join("") + `</div>`;
+  }
+  if (completos.length > 0) {
+    html += `<div class="config-note" style="margin-top:10px;">✅ Já comprado o suficiente: ${completos.map(k => INSUMO_LABELS[k]||k).join(", ")}</div>`;
   }
   html += `<h2 style="margin-top:20px;">Embalagens e itens por unidade</h2>`;
   const embalagensItems = [
@@ -1246,7 +1253,8 @@ async function reabrirMes(mk){
 
 function renderCaixa(panel){
   const { needs } = computeInsumoNeeds(allOrderItems().filter(i => !i.produzido));
-  const insumoKeys = Object.keys(needs).filter(k => k !== "limao_unid");
+  const compradoCaixa = comprasJaFeitas();
+  const insumoKeys = Object.keys(needs).filter(k => k !== "limao_unid" && (needs[k] - (compradoCaixa[k]||0)) > 0);
 
   let html = `<h2>Fechamento de caixa</h2><div class="subtitle">Entradas (pedidos do app + fora do app + repasses) menos saídas (insumos + despesas).</div>`;
 
