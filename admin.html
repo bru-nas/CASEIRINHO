@@ -1273,8 +1273,9 @@ function renderCaixa(panel){
           </select>
           <input type="text" id="c_insumo_extra" placeholder="Digite o nome do item" style="display:none; margin-top:6px;">
         </div>
-        <div><label>Valor unitário (R$ por g/un)</label><input type="number" step="0.0001" id="c_unitprice" placeholder="Ex: 0.025" oninput="atualizarCustoTotal()"></div>
-        <div><label>Quantidade</label><input type="number" step="0.1" id="c_qty" placeholder="Ex: 1000 (g)" oninput="atualizarCustoTotal()"></div>
+        <div><label>Valor por kg (R$)</label><input type="number" step="0.01" id="c_unitprice" placeholder="Ex: 25.00" oninput="atualizarCustoTotal()"></div>
+        <div><label>Quantidade comprada (kg)</label><input type="number" step="0.001" id="c_qty" placeholder="Ex: 1 (kg)" oninput="atualizarCustoTotal()"></div>
+        <div style="font-size:11px; color:var(--brown-soft); margin-top:-8px; margin-bottom:6px;">Para itens em unidade (ex: Limão via "Outro"), digite a quantidade normal, sem kg.</div>
         <div><label>Custo total (calculado)</label><input type="text" id="c_cost_preview" value="R$ 0.00" disabled style="background:#eee;"></div>
         <div><label>Data</label><input type="date" id="c_date" value="${new Date().toISOString().slice(0,10)}"></div>
       </div>
@@ -1402,8 +1403,10 @@ async function addInsumoPurchase(){
   const insumo = isExtra ? document.getElementById("c_insumo_extra").value.trim() : INSUMO_LABELS[selectVal];
   const insumoKey = isExtra ? null : selectVal;
   const unitPrice = parseFloat(document.getElementById("c_unitprice").value) || 0;
-  const qty = parseFloat(document.getElementById("c_qty").value) || 0;
-  const cost = unitPrice * qty;
+  const qtyInformada = parseFloat(document.getElementById("c_qty").value) || 0;
+  // pra insumos da ficha técnica (peso), a quantidade é digitada em kg e convertida pra grama
+  const qty = isExtra ? qtyInformada : qtyInformada * 1000;
+  const cost = unitPrice * qtyInformada;
   const date = document.getElementById("c_date").value;
   if (!insumo) return alert("Informe o insumo.");
   await pushRecord("compras_insumos", { insumo, insumoKey, unitPrice, qty, cost, date });
