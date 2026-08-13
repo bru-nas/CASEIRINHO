@@ -200,8 +200,8 @@ const MENU = {
     desc: "Sal saborizado com limão desidratado e ervas para salada",
     sizeLabel: "Opção",
     sizes: [
-      { key: "com_moedor", label: "Com refil + moedor 250g", price: 25 },
-      { key: "sem_refil", label: "Somente refil 250g", price: 15 },
+      { key: "com_moedor", label: "Com refil + moedor 400g", price: 25 },
+      { key: "sem_refil", label: "Somente refil 400g", price: 15 },
     ],
     products: [
       { key: "saladete", label: "Saladete", desc: "sal saborizado com limão desidratado e ervas para salada" },
@@ -209,17 +209,17 @@ const MENU = {
   },
   churrasco: {
     label: "Linha de Churrasco",
-    desc: "Sal grosso saborizado, 250g",
+    desc: "Sal grosso saborizado, 400g",
     sizeLabel: "Opção",
     sizes: [
       { key: "refil", label: "Somente refil", price: 15 },
       { key: "embalagem", label: "Com embalagem", price: 25 },
     ],
     products: [
-      { key: "bbq_churras", label: "BBQ Churras", desc: "sal grosso saborizado com limão, 250g" },
-      { key: "bbq_chamas", label: "BBQ em Chamas", desc: "sal grosso apimentado, 250g" },
-      { key: "bbq_ponto", label: "BBQ ao Ponto", desc: "sal grosso saborizado com alho e cebola, 250g" },
-      { key: "bbq_grelhado", label: "BBQ Grelhado", desc: "sal grosso saborizado com ervas, 250g" },
+      { key: "bbq_churras", label: "BBQ Churras", desc: "sal grosso saborizado com limão, 400g" },
+      { key: "bbq_chamas", label: "BBQ em Chamas", desc: "sal grosso apimentado, 400g" },
+      { key: "bbq_ponto", label: "BBQ ao Ponto", desc: "sal grosso saborizado com alho e cebola, 400g" },
+      { key: "bbq_grelhado", label: "BBQ Grelhado", desc: "sal grosso saborizado com ervas, 400g" },
     ],
   },
 };
@@ -276,7 +276,7 @@ const RECIPE_DEFAULT = {
     pimenta_reino_grao: { com_moedor: 25, sem_refil: 25 },
     coentro_grao:       { com_moedor: 25, sem_refil: 25 },
   },
-  // Churrasco — por unidade de 250g (ambas opções refil/embalagem usam a mesma receita)
+  // Churrasco — por unidade de 400g (ambas opções refil/embalagem usam a mesma receita)
   churrasco: {
     bbq_churras:  { sal_grosso: 350, limao_unid: 2, lemon_pepper: 50 },
     bbq_chamas:   { sal_grosso: 340, pimenta_calabresa: 30, paprica_picante: 30 },
@@ -821,7 +821,7 @@ function renderFicha(panel){
     ${Object.keys(recipe.saladete).map(k => `<tr><td>${INSUMO_LABELS[k]||k}</td>
       <td><input type="number" step="0.1" id="f_sal_${k}" value="${recipe.saladete[k]['sem_refil']}"></td></tr>`).join("")}
   </table>
-  <b>Linha de Churrasco (por unidade de 250g)</b>
+  <b>Linha de Churrasco (por unidade de 400g)</b>
   ${Object.keys(recipe.churrasco).map(prodKey => {
     const prod = findProduct(prodKey);
     const r = recipe.churrasco[prodKey];
